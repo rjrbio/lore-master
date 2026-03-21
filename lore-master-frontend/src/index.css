@@ -1,32 +1,29 @@
 :root {
-  --font-display: 'Cinzel', 'Times New Roman', serif;
-  --font-body: 'Source Sans 3', 'Trebuchet MS', sans-serif;
+  --font-display: 'Sora', 'Segoe UI', sans-serif;
+  --font-body: 'IBM Plex Sans', 'Segoe UI', sans-serif;
 
-  --bg-0: #0f1112;
-  --bg-1: #161b1d;
-  --bg-2: #21282b;
-  --panel-chat: rgba(20, 32, 43, 0.88);
-  --panel-ingest: rgba(49, 34, 23, 0.9);
-  --text-main: #ebefe6;
-  --text-soft: #b8c4ba;
-  --gold-1: #d2b16f;
-  --gold-2: #b68a43;
-  --blue-1: #5ca8d8;
-  --success: #45b07b;
-  --error: #d95f56;
-  --border: rgba(214, 177, 109, 0.26);
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-alt: #fcfcfb;
+  --text: #111111;
+  --text-soft: #434343;
+  --text-softer: #7a7a7a;
+  --accent: #171717;
+  --accent-light: rgba(0, 0, 0, 0.04);
+  --border: #ececec;
+  --border-light: #f4f4f4;
 
-  --radius-lg: 20px;
-  --radius-md: 14px;
-  --radius-sm: 10px;
+  --radius-lg: 18px;
+  --radius-md: 12px;
+  --radius-sm: 6px;
 
-  --shadow-panel: 0 20px 45px rgba(0, 0, 0, 0.35);
-  --shadow-soft: 0 10px 22px rgba(0, 0, 0, 0.22);
+  --shadow-sm: 0 10px 30px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 18px 48px rgba(0, 0, 0, 0.08);
 
-  color: var(--text-main);
-  background: var(--bg-0);
+  color: var(--text);
+  background: var(--bg);
   font-family: var(--font-body);
-  line-height: 1.45;
+  line-height: 1.5;
   font-weight: 400;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -40,18 +37,15 @@
 html,
 body,
 #root {
-  width: 100%;
   min-height: 100%;
+  width: 100%;
   margin: 0;
 }
 
 body {
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 15% 20%, rgba(210, 177, 111, 0.2), transparent 35%),
-    radial-gradient(circle at 82% 12%, rgba(92, 168, 216, 0.16), transparent 32%),
-    linear-gradient(145deg, #0d0f10, #141a1d 45%, #181e21);
-  color: var(--text-main);
+  background: #ffffff;
+  color: var(--text);
 }
 
 h1,
@@ -63,14 +57,7 @@ p {
 
 button,
 input,
+textarea,
 select {
   font: inherit;
-}
-
-@media (max-width: 780px) {
-  :root {
-    --radius-lg: 16px;
-    --radius-md: 12px;
-    --radius-sm: 8px;
-  }
 }

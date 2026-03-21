@@ -1,15 +1,22 @@
 export type ChatRole = 'user' | 'assistant';
 
+export interface QuerySource {
+  title: string;
+  sourceUrl?: string;
+  sourceType?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
   content: string;
   timestamp: string;
+  sources?: QuerySource[];
 }
 
 export interface AskResponse {
   answer: string;
-  sources?: string[];
+  sources?: QuerySource[];
 }
 
 export interface IngestFailure {
@@ -18,11 +25,13 @@ export interface IngestFailure {
   preview?: string;
 }
 
-export interface IngestResponse {
+export interface IngestSourceResult {
+  url: string;
   message: string;
   title: string;
   preview: string;
   sourceUrl: string;
+  sourceType: 'web' | 'fandom' | 'wikipedia';
   locale: string;
   extractionMode: 'jina' | 'api' | 'html';
   replaceExisting: boolean;
@@ -31,6 +40,26 @@ export interface IngestResponse {
   savedChunks: number;
   duplicateChunks: number;
   droppedChunks: number;
+  tags: string[];
   duplicateDetails: IngestFailure[];
   failedChunks: IngestFailure[];
+}
+
+export interface IngestBatchResponse {
+  message: string;
+  processedUrls: number;
+  successfulUrls: number;
+  failedUrls: number;
+  results: IngestSourceResult[];
+  failures: Array<{ url: string; reason: string }>;
+}
+
+export interface DocumentListItem {
+  title: string;
+  sourceUrl?: string;
+  sourceType?: string;
+  locale?: string;
+  tags: string[];
+  chunkCount: number;
+  lastUpdated?: string;
 }

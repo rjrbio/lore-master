@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
-import { askLore, getApiError } from '../services/loreApi';
-import type { ChatMessage } from '../types/lore';
+import { getApiError, queryDocuments } from '../services/loreApi';
+import type { ChatMessage, QuerySource } from '../types/lore';
 
-function buildMessage(role: ChatMessage['role'], content: string): ChatMessage {
+function buildMessage(role: ChatMessage['role'], content: string, sources?: QuerySource[]): ChatMessage {
   return {
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     role,
     content,
     timestamp: new Date().toLocaleTimeString(),
+    sources,
   };
 }
 
@@ -31,13 +32,13 @@ export function useLoreChat() {
     setMessages((prev) => [...prev, buildMessage('user', trimmed)]);
 
     try {
-      const response = await askLore(trimmed);
+      const response = await queryDocuments(trimmed);
       const answer = response.answer?.trim() || 'No encontré una respuesta fiable en el contexto disponible.';
-      setMessages((prev) => [...prev, buildMessage('assistant', answer)]);
+      setMessages((prev) => [...prev, buildMessage('assistant', answer, response.sources)]);
     } catch (err) {
-      const message = getApiError(err, 'No pude consultar al Erudito');
+      const message = getApiError(err, 'No pude consultar la base documental');
       setError(message);
-      setMessages((prev) => [...prev, buildMessage('assistant', 'No logré abrir las crónicas. Intenta de nuevo en unos segundos.')]);
+      setMessages((prev) => [...prev, buildMessage('assistant', 'No pude recuperar contenido de la base documental. Intenta de nuevo en unos segundos.')]);
     } finally {
       setIsLoading(false);
     }

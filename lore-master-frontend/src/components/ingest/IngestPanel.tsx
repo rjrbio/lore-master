@@ -1,30 +1,43 @@
-import type { IngestResponse } from '../../types/lore';
+import type { IngestBatchResponse } from '../../types/lore';
+import type { FileUploadProgress } from '../../hooks/useLoreIngest';
 
 interface IngestPanelProps {
-  url: string;
-  category: string;
+  mode: 'urls' | 'files';
+  onModeChange: (mode: 'urls' | 'files') => void;
+  uploadedFiles: File[];
+  fileValidationErrors: string[];
+  fileProgress: FileUploadProgress[];
+  onHandleFileSelect: (files: FileList | null) => void;
+  urlsText: string;
+  tagsText: string;
   replaceExisting: boolean;
   isLoading: boolean;
   canIngest: boolean;
   error: string | null;
-  result: IngestResponse | null;
-  onUrlChange: (value: string) => void;
-  onCategoryChange: (value: string) => void;
+  result: IngestBatchResponse | null;
+  onUrlsChange: (value: string) => void;
+  onTagsChange: (value: string) => void;
   onReplaceExistingChange: (value: boolean) => void;
   onIngest: () => void;
   onClear: () => void;
 }
 
 export function IngestPanel({
-  url,
-  category,
+  mode,
+  onModeChange,
+  uploadedFiles,
+  fileValidationErrors,
+  fileProgress,
+  onHandleFileSelect,
+  urlsText,
+  tagsText,
   replaceExisting,
   isLoading,
   canIngest,
   error,
   result,
-  onUrlChange,
-  onCategoryChange,
+  onUrlsChange,
+  onTagsChange,
   onReplaceExistingChange,
   onIngest,
   onClear,
@@ -32,30 +45,64 @@ export function IngestPanel({
   return (
     <section className="panel panel--ingest" aria-label="Ingesta de conocimiento">
       <header className="panel__header">
-        <p className="panel__eyebrow">Pipeline de Ingesta</p>
-        <h2>Alimentar Conocimiento</h2>
-        <p className="panel__subtitle">Soporta URLs de Fandom multi-locale, por ejemplo en, es, fr, de, pt-br y más.</p>
+        <p className="panel__eyebrow">Ingesta</p>
+        <h2>Cargar fuentes</h2>
+        <p className="panel__subtitle">{mode === 'urls' ? 'Introduce URLs que el sistema indexará automáticamente.' : 'Carga archivos TXT, MD o PDF que índexará la base de conocimiento.'}</p>
       </header>
 
+      <div className="ingest-tabs">
+        <button className={mode === 'urls' ? 'ingest-tabs__item ingest-tabs__item--active' : 'ingest-tabs__item'} onClick={() => onModeChange('urls')}>URLs</button>
+        <button className={mode === 'files' ? 'ingest-tabs__item ingest-tabs__item--active' : 'ingest-tabs__item'} onClick={() => onModeChange('files')}>Archivos</button>
+      </div>
+
       <div className="ingest-form">
-        <label>
-          URL de Wiki
-          <input
-            value={url}
-            onChange={(event) => onUrlChange(event.target.value)}
-            placeholder="https://eldenring.fandom.com/es/wiki/..."
-            aria-label="URL a ingerir"
-          />
-        </label>
+        {mode === 'urls' && (
+          <label>
+            URLs
+            <textarea
+              value={urlsText}
+              onChange={(event) => onUrlsChange(event.target.value)}
+              placeholder={'https://ejemplo.com/articulo\nhttps://es.wikipedia.org/wiki/...' }
+              aria-label="URLs a ingerir"
+            />
+          </label>
+        )}
+
+        {mode === 'files' && (
+          <label>
+            Archivos (TXT, MD, PDF)
+            <input
+              type="file"
+              multiple
+              accept=".txt,.md,.pdf"
+              onChange={(event) => onHandleFileSelect(event.target.files)}
+              aria-label="Archivos a ingerir"
+            />
+            {uploadedFiles.length > 0 && (
+              <ul className="ingest-form__filelist">
+                {uploadedFiles.map((file) => (
+                  <li key={file.name}>{file.name}</li>
+                ))}
+              </ul>
+            )}
+            {fileValidationErrors.length > 0 && (
+              <div className="feedback feedback--error">
+                {fileValidationErrors.map((message) => (
+                  <p key={message}>{message}</p>
+                ))}
+              </div>
+            )}
+          </label>
+        )}
 
         <label>
-          Categoría
-          <select value={category} onChange={(event) => onCategoryChange(event.target.value)} aria-label="Categoría de lore">
-            <option value="Boss">Jefe (Boss)</option>
-            <option value="NPC">Personaje (NPC)</option>
-            <option value="Lore">Historia General</option>
-            <option value="Item">Objeto</option>
-          </select>
+          Tags opcionales
+          <input
+            value={tagsText}
+            onChange={(event) => onTagsChange(event.target.value)}
+            placeholder="research, product, legal"
+            aria-label="Tags para la ingesta"
+          />
         </label>
 
         <label className="ingest-form__check">
@@ -69,9 +116,29 @@ export function IngestPanel({
         </label>
 
         <button className="ingest-form__submit" onClick={onIngest} disabled={!canIngest}>
-          {isLoading ? 'Procesando URL...' : 'Absorber conocimiento'}
+          {isLoading
+            ? mode === 'files'
+              ? 'Procesando archivos...'
+              : 'Procesando fuentes...'
+            : mode === 'files'
+              ? 'Ingerir archivos'
+              : 'Ingerir fuentes'}
         </button>
       </div>
+
+      {mode === 'files' && fileProgress.length > 0 && (
+        <div className="ingest-progress" aria-live="polite">
+          <p className="ingest-progress__title">Progreso por archivo</p>
+          <ul className="ingest-progress__list">
+            {fileProgress.map((item) => (
+              <li key={item.id} className={`ingest-progress__item ingest-progress__item--${item.status}`}>
+                <span>{item.name}</span>
+                <span>{item.status === 'uploading' ? 'Procesando' : item.status === 'done' ? 'Completado' : item.status === 'error' ? 'Error' : 'Pendiente'}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {(error || result) && (
         <div className={`ingest-status ${error ? 'ingest-status--error' : 'ingest-status--success'}`}>
@@ -86,21 +153,33 @@ export function IngestPanel({
             <>
               <p>{result.message}</p>
               <ul>
-                <li>Título: {result.title}</li>
-                <li>Locale detectado: {result.locale}</li>
-                <li>Fuente de extracción: {result.extractionMode}</li>
-                <li>Modo reemplazo: {result.replaceExisting ? 'Sí' : 'No'}</li>
-                <li>Chunks reemplazados: {result.replacedChunks}</li>
-                <li>Chunks guardados: {result.savedChunks}/{result.totalChunks}</li>
-                <li>Chunks duplicados: {result.duplicateChunks}</li>
-                <li>Chunks descartados: {result.droppedChunks}</li>
-                <li>Origen: {result.sourceUrl}</li>
+                <li>Fuentes procesadas: {result.processedUrls}</li>
+                <li>Fuentes correctas: {result.successfulUrls}</li>
+                <li>Fuentes fallidas: {result.failedUrls}</li>
               </ul>
-              {result.duplicateDetails.length > 0 && (
-                <p>Reingesta detectada: {result.duplicateDetails.length} chunk(s) ya existían para esa URL.</p>
+              {result.results.length > 0 && (
+                <div className="ingest-results">
+                  {result.results.map((item) => (
+                    <article key={item.sourceUrl} className="ingest-result-card">
+                      <h3>{item.title}</h3>
+                      <p>{item.sourceUrl}</p>
+                      <ul>
+                        <li>Tipo: {item.sourceType}</li>
+                        <li>Extracción: {item.extractionMode}</li>
+                        <li>Chunks guardados: {item.savedChunks}/{item.totalChunks}</li>
+                        <li>Duplicados: {item.duplicateChunks}</li>
+                        <li>Reemplazados: {item.replacedChunks}</li>
+                      </ul>
+                    </article>
+                  ))}
+                </div>
               )}
-              {result.failedChunks.length > 0 && (
-                <p>Fallos parciales: {result.failedChunks.length} chunk(s) no se guardaron.</p>
+              {result.failures.length > 0 && (
+                <div className="feedback feedback--error">
+                  {result.failures.map((failure) => (
+                    <p key={failure.url}>{failure.url}: {failure.reason}</p>
+                  ))}
+                </div>
               )}
             </>
           )}
