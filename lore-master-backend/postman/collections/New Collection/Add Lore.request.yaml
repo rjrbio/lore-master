@@ -1,0 +1,33 @@
+$kind: http-request
+method: POST
+url: "{{baseUrl}}/lore"
+examples: .resources/Add Lore.resources/examples
+order: 1000
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: >-
+    {
+      "title": "Malenia, Blade of Miquella",
+      "content": "Malenia is a demigod and the most powerful warrior in the Lands Between. She is the daughter of Queen Marika and Radagon, twin to Miquella. She wields the Blade of Miquella and is afflicted by the Scarlet Rot.",
+      "category": "Boss"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code is 201", function () {
+          pm.response.to.have.status(201);
+      });
+
+      pm.test("Response has _id field", function () {
+          const json = pm.response.json();
+          pm.expect(json).to.have.property("_id");
+      });
+
+      pm.test("Response has embedding field that is an array", function () {
+          const json = pm.response.json();
+          pm.expect(json).to.have.property("embedding");
+          pm.expect(json.embedding).to.be.an("array");
+      });
+    language: text/javascript
