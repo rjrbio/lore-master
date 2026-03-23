@@ -1,63 +1,107 @@
-:root {
-  --font-display: 'Sora', 'Segoe UI', sans-serif;
-  --font-body: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap');
 
-  --bg: #ffffff;
-  --surface: #ffffff;
-  --surface-alt: #fcfcfb;
-  --text: #111111;
-  --text-soft: #434343;
-  --text-softer: #7a7a7a;
-  --accent: #171717;
-  --accent-light: rgba(0, 0, 0, 0.04);
-  --border: #ececec;
-  --border-light: #f4f4f4;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-  --radius-lg: 18px;
-  --radius-md: 12px;
-  --radius-sm: 6px;
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
 
-  --shadow-sm: 0 10px 30px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 18px 48px rgba(0, 0, 0, 0.08);
+  html,
+  body,
+  #root {
+    width: 100%;
+    min-height: 100%;
+    margin: 0;
+  }
 
-  color: var(--text);
-  background: var(--bg);
-  font-family: var(--font-body);
-  line-height: 1.5;
-  font-weight: 400;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  body {
+    @apply min-h-screen bg-carbon text-slate-100 font-body antialiased;
+    background-image:
+      linear-gradient(rgba(148, 163, 184, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.04) 1px, transparent 1px),
+      radial-gradient(circle at 10% -20%, rgba(28, 86, 255, 0.32), transparent 42%),
+      radial-gradient(circle at 88% -30%, rgba(122, 45, 255, 0.24), transparent 40%),
+      linear-gradient(145deg, #090c12 0%, #0f1420 48%, #121927 100%);
+    background-size: 32px 32px, 32px 32px, auto, auto, auto;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    position: relative;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.035), transparent 34%);
+    opacity: 0.7;
+  }
+
+  ::selection {
+    background: rgba(28, 86, 255, 0.35);
+    color: #f8fafc;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.18);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.28);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
 }
 
-* {
-  box-sizing: border-box;
-}
+@layer components {
+  .glass-panel {
+    @apply w-full border-t border-slate-200/10 bg-transparent pt-6;
+  }
 
-html,
-body,
-#root {
-  min-height: 100%;
-  width: 100%;
-  margin: 0;
-}
+  .glass-input {
+    @apply w-full rounded-none border-0 border-b border-slate-500/35 bg-transparent px-0 py-3 text-slate-100 placeholder:text-slate-500 outline-none transition duration-200 focus:border-cobalt hover:border-slate-300/45;
+  }
 
-body {
-  min-height: 100vh;
-  background: #ffffff;
-  color: var(--text);
-}
+  .neon-button {
+    @apply inline-flex items-center justify-center border border-slate-200/15 bg-slate-100/5 px-5 py-3 text-sm font-semibold uppercase tracking-[0.12em] text-white transition duration-200 hover:border-cobalt/60 hover:bg-cobalt/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cobalt/30 disabled:cursor-not-allowed disabled:opacity-55;
+  }
 
-h1,
-h2,
-h3,
-p {
-  margin: 0;
-}
+  .chip {
+    @apply inline-flex items-center border border-slate-200/10 bg-slate-100/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-300;
+  }
 
-button,
-input,
-textarea,
-select {
-  font: inherit;
+  .subtle-action {
+    @apply inline-flex cursor-pointer items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 transition hover:text-white;
+  }
 }

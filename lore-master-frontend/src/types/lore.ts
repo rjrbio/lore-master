@@ -53,13 +53,3 @@ export interface IngestBatchResponse {
   results: IngestSourceResult[];
   failures: Array<{ url: string; reason: string }>;
 }
-
-export interface DocumentListItem {
-  title: string;
-  sourceUrl?: string;
-  sourceType?: string;
-  locale?: string;
-  tags: string[];
-  chunkCount: number;
-  lastUpdated?: string;
-}

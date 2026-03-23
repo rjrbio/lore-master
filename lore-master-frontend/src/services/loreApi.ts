@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AskResponse, DocumentListItem, IngestBatchResponse } from '../types/lore';
+import type { AskResponse, IngestBatchResponse } from '../types/lore';
 
 const baseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
@@ -24,23 +24,16 @@ export async function ingestDocuments(urls: string[], replaceExisting: boolean, 
   return data;
 }
 
-  export async function ingestFiles(files: File[], replaceExisting: boolean, tags: string[]): Promise<IngestBatchResponse> {
-    const formData = new FormData();
-    files.forEach((file) => {
-      formData.append('files', file);
-    });
-    formData.append('replaceExisting', String(replaceExisting));
-    formData.append('tags', tags.join(','));
+export async function ingestFiles(files: File[], replaceExisting: boolean, tags: string[]): Promise<IngestBatchResponse> {
+  const formData = new FormData();
+  files.forEach((file) => {
+    formData.append('files', file);
+  });
+  formData.append('replaceExisting', String(replaceExisting));
+  formData.append('tags', tags.join(','));
 
-    const { data } = await api.post<IngestBatchResponse>('/documents/ingest-files', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return data;
-  }
-
-export async function listDocuments(): Promise<DocumentListItem[]> {
-  const { data } = await api.get<DocumentListItem[]>('/documents', {
-    params: { _ts: Date.now() },
+  const { data } = await api.post<IngestBatchResponse>('/documents/ingest-files', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
   });
   return data;
 }

@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type { IngestBatchResponse } from '../../types/lore';
 import type { FileUploadProgress } from '../../hooks/useLoreIngest';
 
@@ -42,24 +43,32 @@ export function IngestPanel({
   onIngest,
   onClear,
 }: IngestPanelProps) {
+  const fileInputId = useId();
+  const tabBase = 'border-b px-0 pb-2 pt-1 text-sm font-medium uppercase tracking-[0.12em] transition';
+  const tabIdle = 'border-transparent text-slate-400 hover:border-slate-500/40 hover:text-slate-100';
+  const tabActive = 'border-cobalt text-white';
+
   return (
-    <section className="panel panel--ingest" aria-label="Ingesta de conocimiento">
-      <header className="panel__header">
-        <p className="panel__eyebrow">Ingesta</p>
-        <h2>Cargar fuentes</h2>
-        <p className="panel__subtitle">{mode === 'urls' ? 'Introduce URLs que el sistema indexará automáticamente.' : 'Carga archivos TXT, MD o PDF que índexará la base de conocimiento.'}</p>
+    <section className="glass-panel" aria-label="Ingesta de conocimiento">
+      <header className="mb-6 grid gap-2 lg:grid-cols-[minmax(0,26rem)_1fr] lg:items-end">
+        <div className="grid gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet/85">Ingesta</p>
+          <h2 className="font-display text-2xl font-semibold tracking-[-0.03em] text-white md:text-3xl">Cargar fuentes</h2>
+        </div>
+        <p className="max-w-3xl text-sm leading-7 text-slate-300/78 md:text-[15px]">{mode === 'urls' ? 'Introduce URLs que el sistema indexará automáticamente.' : 'Carga archivos TXT, MD o PDF que índexará la base de conocimiento.'}</p>
       </header>
 
-      <div className="ingest-tabs">
-        <button className={mode === 'urls' ? 'ingest-tabs__item ingest-tabs__item--active' : 'ingest-tabs__item'} onClick={() => onModeChange('urls')}>URLs</button>
-        <button className={mode === 'files' ? 'ingest-tabs__item ingest-tabs__item--active' : 'ingest-tabs__item'} onClick={() => onModeChange('files')}>Archivos</button>
+      <div className="inline-flex gap-6 border-b border-slate-200/10">
+        <button className={`${tabBase} ${mode === 'urls' ? tabActive : tabIdle}`} onClick={() => onModeChange('urls')}>URLs</button>
+        <button className={`${tabBase} ${mode === 'files' ? tabActive : tabIdle}`} onClick={() => onModeChange('files')}>Archivos</button>
       </div>
 
-      <div className="ingest-form">
+      <div className="mt-5 grid max-w-5xl gap-6">
         {mode === 'urls' && (
-          <label>
-            URLs
+          <label className="grid gap-2 text-sm font-medium text-slate-100">
+            <span className="text-[11px] uppercase tracking-[0.18em] text-slate-500">URLs</span>
             <textarea
+              className="glass-input min-h-[160px] resize-y"
               value={urlsText}
               onChange={(event) => onUrlsChange(event.target.value)}
               placeholder={'https://ejemplo.com/articulo\nhttps://es.wikipedia.org/wiki/...' }
@@ -69,35 +78,61 @@ export function IngestPanel({
         )}
 
         {mode === 'files' && (
-          <label>
-            Archivos (TXT, MD, PDF)
+          <div className="grid gap-3 text-sm text-slate-100">
+            <div className="grid gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Archivos</span>
+              <p className="text-sm leading-7 text-slate-300/82">Arrastra o selecciona archivos TXT, MD o PDF de hasta 15 MB.</p>
+            </div>
+
             <input
+              id={fileInputId}
+              className="sr-only"
               type="file"
               multiple
               accept=".txt,.md,.pdf"
               onChange={(event) => onHandleFileSelect(event.target.files)}
               aria-label="Archivos a ingerir"
             />
+
+            <label htmlFor={fileInputId} className="group flex cursor-pointer items-center justify-between gap-6 border-b border-slate-400/35 py-4 transition duration-200 hover:border-cobalt/70">
+              <div className="grid gap-1">
+                <span className="text-sm font-medium text-slate-100 transition group-hover:text-white">Elegir archivos</span>
+                <span className="text-xs uppercase tracking-[0.14em] text-slate-500">Múltiple selección habilitada</span>
+              </div>
+              <span className="subtle-action">
+                Explorar
+                <span aria-hidden="true">+</span>
+              </span>
+            </label>
+
             {uploadedFiles.length > 0 && (
-              <ul className="ingest-form__filelist">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">{uploadedFiles.length} archivo(s) listo(s) para procesar</p>
+            )}
+
+            {uploadedFiles.length > 0 && (
+              <ul className="grid gap-0 border-t border-slate-200/10">
                 {uploadedFiles.map((file) => (
-                  <li key={file.name}>{file.name}</li>
+                  <li key={file.name} className="flex items-center justify-between gap-4 border-b border-slate-200/10 py-3 text-sm text-slate-300/88">
+                    <span className="truncate">{file.name}</span>
+                    <span className="text-[11px] uppercase tracking-[0.16em] text-slate-500">listo</span>
+                  </li>
                 ))}
               </ul>
             )}
             {fileValidationErrors.length > 0 && (
-              <div className="feedback feedback--error">
+              <div className="border-l-2 border-rose-400 pl-4 text-sm leading-7 text-rose-200">
                 {fileValidationErrors.map((message) => (
                   <p key={message}>{message}</p>
                 ))}
               </div>
             )}
-          </label>
+          </div>
         )}
 
-        <label>
-          Tags opcionales
+        <label className="grid gap-2 text-sm font-medium text-slate-100">
+          <span className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Tags opcionales</span>
           <input
+            className="glass-input"
             value={tagsText}
             onChange={(event) => onTagsChange(event.target.value)}
             placeholder="research, product, legal"
@@ -105,17 +140,18 @@ export function IngestPanel({
           />
         </label>
 
-        <label className="ingest-form__check">
+        <label className="flex cursor-pointer items-center gap-3 text-sm text-slate-100">
           <input
+            className="h-4 w-4 accent-cobalt"
             type="checkbox"
             checked={replaceExisting}
             onChange={(event) => onReplaceExistingChange(event.target.checked)}
             aria-label="Reemplazar contenido existente para esta URL"
           />
-          Reemplazar contenido existente para esta URL
+          <span className="leading-7 text-slate-300/88">Reemplazar contenido existente para esta URL</span>
         </label>
 
-        <button className="ingest-form__submit" onClick={onIngest} disabled={!canIngest}>
+        <button className="neon-button w-fit py-2.5" onClick={onIngest} disabled={!canIngest}>
           {isLoading
             ? mode === 'files'
               ? 'Procesando archivos...'
@@ -127,13 +163,24 @@ export function IngestPanel({
       </div>
 
       {mode === 'files' && fileProgress.length > 0 && (
-        <div className="ingest-progress" aria-live="polite">
-          <p className="ingest-progress__title">Progreso por archivo</p>
-          <ul className="ingest-progress__list">
+        <div className="mt-6 max-w-5xl border-t border-slate-200/10 pt-3" aria-live="polite">
+          <p className="mb-3 text-sm uppercase tracking-[0.12em] text-slate-400">Progreso por archivo</p>
+          <ul className="grid gap-2">
             {fileProgress.map((item) => (
-              <li key={item.id} className={`ingest-progress__item ingest-progress__item--${item.status}`}>
-                <span>{item.name}</span>
-                <span>{item.status === 'uploading' ? 'Procesando' : item.status === 'done' ? 'Completado' : item.status === 'error' ? 'Error' : 'Pendiente'}</span>
+              <li
+                key={item.id}
+                className={`flex justify-between gap-3 border-b border-slate-200/10 px-0 py-3 text-sm ${
+                  item.status === 'done'
+                    ? 'text-emerald-100'
+                    : item.status === 'error'
+                      ? 'text-rose-100'
+                      : item.status === 'uploading'
+                        ? 'text-slate-100'
+                        : 'text-slate-200'
+                }`}
+              >
+                <span className="truncate">{item.name}</span>
+                <span className="text-[11px] uppercase tracking-[0.16em]">{item.status === 'uploading' ? 'Procesando' : item.status === 'done' ? 'Completado' : item.status === 'error' ? 'Error' : 'Pendiente'}</span>
               </li>
             ))}
           </ul>
@@ -141,29 +188,29 @@ export function IngestPanel({
       )}
 
       {(error || result) && (
-        <div className={`ingest-status ${error ? 'ingest-status--error' : 'ingest-status--success'}`}>
-          <div className="ingest-status__head">
+        <div className={`mt-6 grid max-w-5xl gap-3 border-t pt-3 ${error ? 'border-rose-400/30 text-rose-100' : 'border-emerald-300/25 text-emerald-100'}`}>
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
             <strong>{error ? 'Ingesta fallida' : 'Ingesta completada'}</strong>
-            <button onClick={onClear} aria-label="Limpiar estado">Cerrar</button>
+            <button className="subtle-action justify-start" onClick={onClear} aria-label="Limpiar estado">Cerrar</button>
           </div>
 
-          {error && <p>{error}</p>}
+          {error && <p className="text-sm leading-6">{error}</p>}
 
           {result && (
             <>
-              <p>{result.message}</p>
-              <ul>
+              <p className="text-sm leading-6">{result.message}</p>
+              <ul className="grid gap-1 pl-5 text-sm text-slate-100 list-disc">
                 <li>Fuentes procesadas: {result.processedUrls}</li>
                 <li>Fuentes correctas: {result.successfulUrls}</li>
                 <li>Fuentes fallidas: {result.failedUrls}</li>
               </ul>
               {result.results.length > 0 && (
-                <div className="ingest-results">
+                <div className="grid gap-3">
                   {result.results.map((item) => (
-                    <article key={item.sourceUrl} className="ingest-result-card">
-                      <h3>{item.title}</h3>
-                      <p>{item.sourceUrl}</p>
-                      <ul>
+                    <article key={item.sourceUrl} className="border-l border-slate-200/20 pl-4">
+                      <h3 className="font-display text-lg text-white">{item.title}</h3>
+                      <p className="mt-1 break-all text-sm text-slate-300/80">{item.sourceUrl}</p>
+                      <ul className="mt-2 grid gap-1 pl-5 text-sm list-disc text-slate-100">
                         <li>Tipo: {item.sourceType}</li>
                         <li>Extracción: {item.extractionMode}</li>
                         <li>Chunks guardados: {item.savedChunks}/{item.totalChunks}</li>
@@ -175,7 +222,7 @@ export function IngestPanel({
                 </div>
               )}
               {result.failures.length > 0 && (
-                <div className="feedback feedback--error">
+                <div className="border-l-2 border-rose-400 pl-4 text-sm leading-7 text-rose-200">
                   {result.failures.map((failure) => (
                     <p key={failure.url}>{failure.url}: {failure.reason}</p>
                   ))}
