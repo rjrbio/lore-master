@@ -1,23 +1,52 @@
 import axios from 'axios';
-import type { AskResponse, IngestBatchResponse } from '../types/lore';
+import type { AskRequest, AskResponse, IngestBatchResponse } from '../types/lore';
 
-const baseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+const baseURL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000' : '');
 
 const api = axios.create({
   baseURL,
-  timeout: 30000,
+  timeout: 60000,
 });
 
-export async function queryDocuments(question: string): Promise<AskResponse> {
-  const { data } = await api.get<AskResponse>('/documents/query', {
-    params: { q: question, _ts: Date.now() },
-  });
+// Retry automático para errores de red y 5xx
+api.interceptors.response.use(undefined, async (error) => {
+  const config = error.config;
+  if (!config || config._retryCount >= 2) return Promise.reject(error);
+
+  const shouldRetry =
+    !error.response ||
+    error.response.status >= 500 ||
+    error.code === 'ECONNABORTED';
+
+  if (!shouldRetry) return Promise.reject(error);
+
+  config._retryCount = (config._retryCount || 0) + 1;
+  const delay = config._retryCount * 1000;
+  await new Promise((r) => setTimeout(r, delay));
+  return api(config);
+});
+
+export async function queryDocuments(
+  question: string,
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+): Promise<AskResponse> {
+  const body: AskRequest = { question, history: history ?? [] };
+  const { data } = await api.post<AskResponse>('/documents/query', body);
   return data;
 }
 
 export async function ingestDocuments(urls: string[], replaceExisting: boolean, tags: string[]): Promise<IngestBatchResponse> {
   const { data } = await api.post<IngestBatchResponse>('/documents/ingest', {
     urls,
+    replaceExisting,
+    tags,
+  });
+  return data;
+}
+
+export async function ingestSingleUrl(url: string, replaceExisting: boolean, tags: string[]): Promise<IngestBatchResponse> {
+  const { data } = await api.post<IngestBatchResponse>('/documents/ingest', {
+    urls: [url],
     replaceExisting,
     tags,
   });

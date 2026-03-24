@@ -2,6 +2,7 @@ import {
     BadRequestException,
     Injectable,
     InternalServerErrorException,
+    Logger,
     ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -9,10 +10,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import axios, { AxiosError } from 'axios';
 import * as cheerio from 'cheerio';
+import * as mammoth from 'mammoth';
 import OpenAI from 'openai';
 import { PDFParse } from 'pdf-parse';
 import { createHash } from 'crypto';
-import type { Multer } from 'multer';
 import { Lore } from './lore.schema';
 
 type SourceType = 'web' | 'fandom' | 'wikipedia' | 'file';
@@ -103,10 +104,14 @@ interface IngestOptions {
 
 @Injectable()
 export class LoreService {
+    private readonly logger = new Logger(LoreService.name);
     private readonly openai: OpenAI;
     private readonly defaultLocale = 'en';
-    private readonly minChunkLength = 120;
-    private readonly maxChunkLength = 1900;
+    private readonly minChunkLength: number;
+    private readonly maxChunkLength: number;
+    private readonly vectorSearchThreshold: number;
+    private readonly embeddingModel: string;
+    private readonly chatModel: string;
 
     constructor(
         @InjectModel(Lore.name) private readonly loreModel: Model<Lore>,
@@ -117,11 +122,17 @@ export class LoreService {
             throw new InternalServerErrorException('OPENAI_API_KEY no está configurada');
         }
         this.openai = new OpenAI({ apiKey });
+        this.minChunkLength = this.configService.get<number>('MIN_CHUNK_LENGTH', 120);
+        this.maxChunkLength = this.configService.get<number>('MAX_CHUNK_LENGTH', 1900);
+        this.vectorSearchThreshold = this.configService.get<number>('VECTOR_SEARCH_THRESHOLD', 0.72);
+        this.embeddingModel = this.configService.get<string>('OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small');
+        this.chatModel = this.configService.get<string>('OPENAI_CHAT_MODEL', 'gpt-4o');
     }
 
     async createLore(title: string, content: string, category = 'Document', metadata?: DocumentChunkMetadata) {
+        this.logger.debug(`Creando lore: "${title}" (${content.length} chars)`);
         const response = await this.openai.embeddings.create({
-            model: 'text-embedding-3-small',
+            model: this.embeddingModel,
             input: content,
         });
 
@@ -136,9 +147,10 @@ export class LoreService {
         return newLore.save();
     }
 
-    async searchLore(question: string) {
+    async searchLore(question: string, topK = 5) {
+        this.logger.debug(`Vector search: "${question.slice(0, 80)}" (topK=${topK})`);
         const response = await this.openai.embeddings.create({
-            model: 'text-embedding-3-small',
+            model: this.embeddingModel,
             input: question,
         });
         const questionEmbedding = response.data[0].embedding;
@@ -149,8 +161,8 @@ export class LoreService {
                     index: 'vector_index',
                     path: 'embedding',
                     queryVector: questionEmbedding,
-                    numCandidates: 10,
-                    limit: 3,
+                    numCandidates: topK * 4,
+                    limit: topK,
                 },
             },
             {
@@ -163,14 +175,23 @@ export class LoreService {
                     score: { $meta: 'vectorSearchScore' },
                 },
             },
+            {
+                $match: { score: { $gte: this.vectorSearchThreshold } },
+            },
         ]);
     }
 
-    async findAll() {
-        return this.loreModel.find().select('-embedding').sort({ updatedAt: -1 }).exec();
+    async findAll(skip = 0, limit = 100) {
+        return this.loreModel
+            .find()
+            .select('-embedding')
+            .sort({ updatedAt: -1 })
+            .skip(skip)
+            .limit(Math.min(limit, 1000))
+            .exec();
     }
 
-    async listDocuments(): Promise<DocumentListItem[]> {
+    async listDocuments(skip = 0, limit = 50): Promise<DocumentListItem[]> {
         const documents = await this.loreModel.aggregate([
             {
                 $project: {
@@ -197,6 +218,8 @@ export class LoreService {
             {
                 $sort: { lastUpdated: -1, title: 1 },
             },
+            { $skip: skip },
+            { $limit: Math.min(limit, 500) },
         ]);
 
         return documents.map((document) => ({
@@ -210,11 +233,56 @@ export class LoreService {
         }));
     }
 
-    async askQuestion(question: string) {
-        const contextFiles = await this.searchLore(question);
+    /**
+     * Si hay historial, condensa la pregunta actual en una consulta autónoma
+     * que incluya el sujeto/tema implícito del contexto conversacional.
+     * Se usa un modelo ligero (gpt-4o-mini) para mantener latencia baja.
+     */
+    private async condenseQuestion(
+        question: string,
+        history: Array<{ role: 'user' | 'assistant'; content: string }>,
+    ): Promise<string> {
+        if (history.length === 0) return question;
+
+        const condensed = await this.openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            temperature: 0,
+            messages: [
+                {
+                    role: 'system',
+                    content:
+                        'Eres un asistente que reformula preguntas de seguimiento para convertirlas en consultas autónomas y completas. ' +
+                        'Dado el historial de conversación y la última pregunta del usuario, reescribe la pregunta de forma que sea completamente ' +
+                        'autocontenida (sin referencias implícitas como "él", "ella", "eso", "el anterior", etc.). ' +
+                        'Devuelve ÚNICAMENTE la pregunta reformulada, sin explicaciones ni texto adicional.',
+                },
+                ...history.map((h) => ({ role: h.role, content: h.content } as OpenAI.Chat.ChatCompletionMessageParam)),
+                {
+                    role: 'user',
+                    content: question,
+                },
+            ],
+        });
+
+        return condensed.choices[0].message.content?.trim() || question;
+    }
+
+    async askQuestion(
+        question: string,
+        history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    ) {
+        // Reformular la pregunta como standalone para que el vector search
+        // encuentre los documentos correctos aunque la pregunta sea ambigua
+        const searchQuery =
+            history && history.length > 0
+                ? await this.condenseQuestion(question, history)
+                : question;
+
+        const contextFiles = await this.searchLore(searchQuery);
         if (contextFiles.length === 0) {
             return {
-                answer: 'No encontré contenido relevante en la base documental para responder esa consulta.',
+                answer:
+                    'No encontré contenido relevante en la base documental para responder esa consulta. Por favor, ingesta documentos relacionados con el tema antes de realizar la consulta.',
                 sources: [] as QuerySource[],
             };
         }
@@ -226,20 +294,33 @@ export class LoreService {
             })
             .join('\n\n---\n\n');
 
+        const systemPrompt = `Eres un consultor-analista documental experto. Tu función es analizar el contenido recuperado y proporcionar respuestas precisas y bien estructuradas.
+
+Reglas:
+1. Basa tu respuesta EXCLUSIVAMENTE en los fragmentos de contexto proporcionados.
+2. Al citar información específica, indica de qué documento proviene usando [Documento N].
+3. Estructura tu respuesta con claridad: usa secciones o puntos cuando sea apropiado.
+4. Si el contexto no contiene información suficiente para responder, indícalo explícitamente: "El contexto disponible no contiene información sobre [tema específico]."
+5. No inventes ni extrapoles información más allá del contexto proporcionado.
+6. Usa un tono profesional y analítico.`;
+
+        const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+            { role: 'system', content: systemPrompt },
+            ...(history ?? []).map(
+                (h) => ({ role: h.role, content: h.content } as OpenAI.Chat.ChatCompletionMessageParam),
+            ),
+            {
+                role: 'user',
+                content: `Pregunta: ${question}\n\nContexto documental recuperado:\n${contextText}`,
+            },
+        ];
+
         const response = await this.openai.chat.completions.create({
-            model: 'gpt-4o',
-            messages: [
-                {
-                    role: 'system',
-                    content:
-                        'Eres un asistente de análisis documental. Responde usando solo el contexto proporcionado. Si el contexto no basta, dilo de forma explícita.',
-                },
-                {
-                    role: 'user',
-                    content: `Pregunta: ${question}\n\nContexto:\n${contextText}`,
-                },
-            ],
+            model: this.chatModel,
+            messages,
         });
+
+        this.logger.debug(`Respuesta generada (${contextFiles.length} fuentes, modelo: ${this.chatModel})`);
 
         return {
             answer: response.choices[0].message.content,
@@ -247,6 +328,8 @@ export class LoreService {
                 title: file.title,
                 sourceUrl: file.sourceUrl,
                 sourceType: file.sourceType,
+                score: file.score as number,
+                preview: (file.content as string)?.slice(0, 200),
             })),
         };
     }
@@ -257,6 +340,7 @@ export class LoreService {
             throw new BadRequestException('Debes proporcionar al menos una URL válida para ingerir.');
         }
 
+        this.logger.log(`Iniciando ingesta de ${sanitizedUrls.length} URL(s)`);
         const results: IngestSourceResult[] = [];
         const failures: Array<{ url: string; reason: string }> = [];
 
@@ -424,15 +508,17 @@ export class LoreService {
                     ? error.message
                     : 'Error desconocido';
 
-            throw new InternalServerErrorException(`No se pudo procesar la URL: ${detail}`);
+            this.logger.error(`Fallo al procesar URL: ${detail}`, error instanceof Error ? error.stack : undefined);
+            throw new InternalServerErrorException('No se pudo procesar la URL. Inténtalo de nuevo más tarde.');
         }
     }
 
-    async ingestFiles(files: Multer.File[], options?: IngestOptions): Promise<IngestBatchResult> {
+    async ingestFiles(files: Express.Multer.File[], options?: IngestOptions): Promise<IngestBatchResult> {
         if (!files || files.length === 0) {
             throw new BadRequestException('Debes proporcionar al menos un archivo para ingerir.');
         }
 
+        this.logger.log(`Iniciando ingesta de ${files.length} archivo(s)`);
         const results: IngestSourceResult[] = [];
         const failures: Array<{ url: string; reason: string }> = [];
 
@@ -463,15 +549,15 @@ export class LoreService {
         };
     }
 
-    private async ingestFile(file: Multer.File, options?: IngestOptions): Promise<IngestSourceResult> {
+    private async ingestFile(file: Express.Multer.File, options?: IngestOptions): Promise<IngestSourceResult> {
         try {
             if (!file.originalname) {
                 throw new BadRequestException('El archivo debe tener un nombre.');
             }
 
             const ext = file.originalname.split('.').pop()?.toLowerCase();
-            if (!['txt', 'md', 'pdf'].includes(ext || '')) {
-                throw new BadRequestException('Solo se permiten archivos TXT, MD o PDF.');
+            if (!['txt', 'md', 'pdf', 'docx'].includes(ext || '')) {
+                throw new BadRequestException('Solo se permiten archivos TXT, MD, PDF o DOCX.');
             }
 
             let contentText: string;
@@ -483,6 +569,9 @@ export class LoreService {
                 } finally {
                     await parser.destroy();
                 }
+            } else if (ext === 'docx') {
+                const result = await mammoth.extractRawText({ buffer: file.buffer });
+                contentText = result.value;
             } else {
                 contentText = file.buffer.toString('utf-8');
             }
@@ -588,7 +677,7 @@ export class LoreService {
             }
 
             throw new InternalServerErrorException(
-                `No se pudo procesar el archivo: ${error instanceof Error ? error.message : 'Error desconocido'}`,
+                'No se pudo procesar el archivo. Inténtalo de nuevo más tarde.',
             );
         }
     }
@@ -683,7 +772,7 @@ export class LoreService {
     private async fetchTextWithFallback(urlData: NormalizedDocumentUrl): Promise<TextExtractionResult> {
         const acceptLanguage = this.buildAcceptLanguage(urlData.locale);
         const jinaResponse = await axios.get<string>(urlData.readerUrl, {
-            timeout: 30000,
+            timeout: 15000,
             responseType: 'text',
             validateStatus: () => true,
             headers: {
@@ -717,7 +806,7 @@ export class LoreService {
 
         if ([403, 429, 451].includes(jinaResponse.status) || jinaResponse.status >= 500 || !jinaText) {
             const htmlResponse = await axios.get<string>(urlData.canonicalUrl, {
-                timeout: 30000,
+                timeout: 15000,
                 responseType: 'text',
                 validateStatus: () => true,
                 headers: {
@@ -760,7 +849,7 @@ export class LoreService {
         const apiResponse = await axios.get<{
             parse?: { displaytitle?: string; text?: string; title?: string };
         }>(urlData.apiUrl, {
-            timeout: 30000,
+            timeout: 15000,
             validateStatus: () => true,
             headers: {
                 Accept: 'application/json',
@@ -957,7 +1046,16 @@ export class LoreService {
             }
         }
 
-        return chunks.filter(Boolean);
+        // Añadir overlap: prefijar cada chunk (que no sea encabezado) con los
+        // últimos ~200 chars del chunk anterior para preservar contexto en límites.
+        const raw = chunks.filter(Boolean);
+        const overlapChars = 200;
+        return raw.map((chunk, idx) => {
+            if (idx === 0) return chunk;
+            if (/^#{1,3} /.test(chunk.trimStart())) return chunk;
+            const overlap = raw[idx - 1].trimEnd().slice(-overlapChars).trim();
+            return overlap ? `[…] ${overlap}\n\n${chunk}` : chunk;
+        });
     }
 
     private buildChunkHash(sourceUrl: string, content: string): string {

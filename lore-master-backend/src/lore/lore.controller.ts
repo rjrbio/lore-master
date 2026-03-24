@@ -1,22 +1,22 @@
-import { Body, Controller, Get, Header, Post, Query, UseInterceptors, UploadedFiles } from '@nestjs/common';
-import { FilesInterceptor } from '@nestjs/platform-express';
-import type { Multer } from 'multer';
+import { Body, Controller, Get, Header, Post, Query, UseInterceptors, UploadedFiles, BadRequestException } from '@nestjs/common';
+import { FilesInterceptor, } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { Throttle } from '@nestjs/throttler';
 import { LoreService } from './lore.service';
+import { AskDto } from './dto/ask.dto.js';
+import { IngestUrlsDto } from './dto/ingest-urls.dto.js';
+import { CreateLoreDto } from './dto/create-lore.dto.js';
 
 @Controller()
 export class LoreController {
     constructor(private readonly loreService: LoreService) { }
 
-    @Post(['lore', 'documents/manual'])
-    async addLore(
-        @Body('title') title: string,
-        @Body('content') content: string,
-        @Body('category') category?: string,
-    ) {
-        return await this.loreService.createLore(title, content, category);
+    @Post('documents/manual')
+    async addLore(@Body() dto: CreateLoreDto) {
+        return await this.loreService.createLore(dto.title, dto.content, dto.category);
     }
 
-    @Get(['lore/search', 'documents/search'])
+    @Get('documents/search')
     @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
     @Header('Pragma', 'no-cache')
     @Header('Expires', '0')
@@ -24,50 +24,65 @@ export class LoreController {
         return await this.loreService.searchLore(question);
     }
 
-    @Get('lore/all')
-    @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
-    @Header('Pragma', 'no-cache')
-    @Header('Expires', '0')
-    async getAll() {
-        return await this.loreService.findAll();
-    }
-
     @Get('documents')
     @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
     @Header('Pragma', 'no-cache')
     @Header('Expires', '0')
-    async listDocuments() {
-        return await this.loreService.listDocuments();
+    async listDocuments(
+        @Query('skip') skip?: string,
+        @Query('limit') limit?: string,
+    ) {
+        return await this.loreService.listDocuments(
+            Math.max(0, parseInt(skip || '0', 10) || 0),
+            Math.min(500, Math.max(1, parseInt(limit || '50', 10) || 50)),
+        );
     }
 
-    @Get(['lore/ask', 'documents/query'])
+    @Get('documents/all')
     @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
     @Header('Pragma', 'no-cache')
     @Header('Expires', '0')
-    async ask(@Query('q') question: string) {
-        return await this.loreService.askQuestion(question);
+    async getAll(
+        @Query('skip') skip?: string,
+        @Query('limit') limit?: string,
+    ) {
+        return await this.loreService.findAll(
+            Math.max(0, parseInt(skip || '0', 10) || 0),
+            Math.min(1000, Math.max(1, parseInt(limit || '100', 10) || 100)),
+        );
     }
 
-    @Post(['lore/ingest', 'documents/ingest'])
-    async ingest(
-        @Body('url') url?: string,
-        @Body('urls') urls?: string[],
-        @Body('replaceExisting') replaceExisting?: boolean,
-        @Body('tags') tags?: string[],
-    ) {
-        const resolvedUrls = urls?.length ? urls : url ? [url] : [];
-        return await this.loreService.ingestUrls(resolvedUrls, { replaceExisting, tags });
+    @Post('documents/query')
+    async ask(@Body() dto: AskDto) {
+        return await this.loreService.askQuestion(dto.question, dto.history);
+    }
+
+    @Post('documents/ingest')
+    @Throttle({ default: { ttl: 60000, limit: 5 } })
+    async ingest(@Body() dto: IngestUrlsDto) {
+        const resolvedUrls = dto.urls?.length ? dto.urls : dto.url ? [dto.url] : [];
+        return await this.loreService.ingestUrls(resolvedUrls, {
+            replaceExisting: dto.replaceExisting,
+            tags: dto.tags,
+        });
     }
 
     @Post('documents/ingest-files')
+    @Throttle({ default: { ttl: 60000, limit: 5 } })
     @UseInterceptors(FilesInterceptor('files', 10, {
+        storage: memoryStorage(),
+        limits: { fileSize: 10 * 1024 * 1024 },
         fileFilter: (_req, file, cb) => {
-            const allowed = /\.(txt|md|pdf)$/i.test(file.originalname);
-            cb(null, allowed);
+            const allowed = /\.(txt|md|pdf|docx)$/i.test(file.originalname);
+            if (!allowed) {
+                cb(new BadRequestException('Tipo de archivo no permitido. Usa TXT, MD, PDF o DOCX.'), false);
+                return;
+            }
+            cb(null, true);
         },
     }))
     async ingestFiles(
-        @UploadedFiles() files: Multer.File[],
+        @UploadedFiles() files: Express.Multer.File[],
         @Body('tags') tagsStr?: string,
         @Body('replaceExisting') replaceExistingRaw?: string | boolean,
     ) {

@@ -4,6 +4,8 @@ export interface QuerySource {
   title: string;
   sourceUrl?: string;
   sourceType?: string;
+  score?: number;
+  preview?: string;
 }
 
 export interface ChatMessage {
@@ -12,6 +14,11 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
   sources?: QuerySource[];
+}
+
+export interface AskRequest {
+  question: string;
+  history?: Array<{ role: ChatRole; content: string }>;
 }
 
 export interface AskResponse {
@@ -31,7 +38,7 @@ export interface IngestSourceResult {
   title: string;
   preview: string;
   sourceUrl: string;
-  sourceType: 'web' | 'fandom' | 'wikipedia';
+  sourceType: 'web' | 'fandom' | 'wikipedia' | 'file';
   locale: string;
   extractionMode: 'jina' | 'api' | 'html';
   replaceExisting: boolean;

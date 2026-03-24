@@ -12,6 +12,7 @@ interface ChatPanelProps {
   canSend: boolean;
   error: string | null;
   messages: ChatMessage[];
+  onClearHistory: () => void;
 }
 
 export function ChatPanel({
@@ -22,6 +23,7 @@ export function ChatPanel({
   canSend,
   error,
   messages,
+  onClearHistory,
 }: ChatPanelProps) {
   const hasMessages = messages.length > 0;
 
@@ -34,13 +36,24 @@ export function ChatPanel({
 
   return (
     <section className="glass-panel" aria-label="Consulta documental">
-      <header className="mb-6 grid gap-2 lg:grid-cols-[minmax(0,28rem)_1fr] lg:items-end">
+      <div className="mb-6 grid gap-2 lg:grid-cols-[minmax(0,28rem)_1fr] lg:items-end">
         <div className="grid gap-2">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-cobalt/85">Consulta RAG</p>
           <h2 className="font-display text-2xl font-semibold tracking-[-0.03em] text-white md:text-3xl">Consulta documental</h2>
         </div>
-        <p className="max-w-3xl text-sm leading-7 text-slate-300/78 md:text-[15px]">Pregunta sobre el contenido indexado. Las respuestas se construyen con contexto recuperado desde MongoDB Atlas Vector Search.</p>
-      </header>
+        <div className="flex items-end justify-between gap-4">
+          <p className="max-w-3xl text-sm leading-7 text-slate-300/78 md:text-[15px]">Pregunta sobre el contenido indexado. Las respuestas se construyen con contexto recuperado desde MongoDB Atlas Vector Search.</p>
+          {hasMessages && (
+            <button
+              className="subtle-action shrink-0"
+              onClick={onClearHistory}
+              aria-label="Limpiar historial de conversación"
+            >
+              Limpiar
+            </button>
+          )}
+        </div>
+      </div>
 
       <div className="grid max-h-[44vh] min-h-[240px] gap-4 overflow-y-auto pr-2" role="log" aria-live="polite">
         {!hasMessages && (
@@ -134,7 +147,7 @@ export function ChatPanel({
         )}
       </div>
 
-      {error && <p className="mt-5 border-l-2 border-rose-400 pl-4 text-sm leading-7 text-rose-200">{error}</p>}
+      {error && <p role="alert" className="mt-5 border-l-2 border-rose-400 pl-4 text-sm leading-7 text-rose-200">{error}</p>}
 
       <div className="mt-5 grid gap-3 border-t border-slate-200/10 pt-4 md:grid-cols-[1fr_auto] md:items-end">
         <label className="grid gap-2 text-sm text-slate-300">
@@ -148,7 +161,7 @@ export function ChatPanel({
             aria-label="Pregunta documental"
           />
         </label>
-        <button className="neon-button md:min-w-44" onClick={onAsk} disabled={!canSend}>
+        <button className="neon-button md:min-w-44" onClick={onAsk} disabled={!canSend} aria-busy={isLoading}>
           {isLoading ? 'Consultando...' : 'Preguntar'}
         </button>
       </div>

@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
-import { getApiError, ingestDocuments, ingestFiles } from '../services/loreApi';
+import { getApiError, ingestSingleUrl, ingestFiles } from '../services/loreApi';
 import type { IngestBatchResponse } from '../types/lore';
 
-type FileUploadStatus = 'pending' | 'uploading' | 'done' | 'error';
+type IngestItemStatus = 'pending' | 'uploading' | 'done' | 'error';
 
-export interface FileUploadProgress {
+export interface IngestItemProgress {
   id: string;
   name: string;
-  status: FileUploadStatus;
+  status: IngestItemStatus;
   detail?: string;
 }
 
@@ -19,7 +19,8 @@ export function useLoreIngest(onSuccess?: () => void) {
   const [urlsText, setUrlsText] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [fileValidationErrors, setFileValidationErrors] = useState<string[]>([]);
-  const [fileProgress, setFileProgress] = useState<FileUploadProgress[]>([]);
+  const [fileProgress, setFileProgress] = useState<IngestItemProgress[]>([]);
+  const [urlProgress, setUrlProgress] = useState<IngestItemProgress[]>([]);
   const [tagsText, setTagsText] = useState('');
   const [replaceExisting, setReplaceExisting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -55,7 +56,71 @@ export function useLoreIngest(onSuccess?: () => void) {
           .split(/\r?\n|,/)
           .map((value) => value.trim())
           .filter(Boolean);
-        response = await ingestDocuments(urls, replaceExisting, tags);
+
+        const initialProgress: IngestItemProgress[] = urls.map((url, index) => ({
+          id: `url-${index}`,
+          name: url.length > 60 ? url.slice(0, 57) + '...' : url,
+          status: 'pending' as const,
+        }));
+        setUrlProgress(initialProgress);
+
+        const aggregatedResults: IngestBatchResponse = {
+          message: '',
+          processedUrls: urls.length,
+          successfulUrls: 0,
+          failedUrls: 0,
+          results: [],
+          failures: [],
+        };
+
+        for (const [index, url] of urls.entries()) {
+          const progressId = `url-${index}`;
+          setUrlProgress((current) =>
+            current.map((item) =>
+              item.id === progressId ? { ...item, status: 'uploading', detail: 'Extrayendo y procesando...' } : item,
+            ),
+          );
+
+          try {
+            const singleResponse = await ingestSingleUrl(url, replaceExisting, tags);
+            aggregatedResults.results.push(...singleResponse.results);
+            aggregatedResults.failures.push(...singleResponse.failures);
+
+            const failed = singleResponse.failedUrls > 0 || singleResponse.failures.length > 0;
+            setUrlProgress((current) =>
+              current.map((item) =>
+                item.id === progressId
+                  ? {
+                    ...item,
+                    status: failed ? 'error' : 'done',
+                    detail: failed
+                      ? singleResponse.failures[0]?.reason ?? 'Falló la ingesta'
+                      : `${singleResponse.results[0]?.savedChunks ?? 0} chunks guardados`,
+                  }
+                  : item,
+              ),
+            );
+          } catch (singleError) {
+            const reason = getApiError(singleError, `No se pudo procesar la URL`);
+            aggregatedResults.failures.push({ url, reason });
+            setUrlProgress((current) =>
+              current.map((item) =>
+                item.id === progressId
+                  ? { ...item, status: 'error', detail: reason }
+                  : item,
+              ),
+            );
+          }
+        }
+
+        aggregatedResults.successfulUrls = aggregatedResults.results.length;
+        aggregatedResults.failedUrls = aggregatedResults.failures.length;
+        aggregatedResults.message =
+          aggregatedResults.failedUrls === 0
+            ? `Ingesta completada para ${aggregatedResults.successfulUrls} fuente(s).`
+            : `Ingesta completada con incidencias: ${aggregatedResults.successfulUrls} fuente(s) correctas, ${aggregatedResults.failedUrls} fallidas.`;
+
+        response = aggregatedResults;
         setUrlsText('');
       } else {
         const initializedProgress = uploadedFiles.map((file, index) => ({
@@ -158,9 +223,9 @@ export function useLoreIngest(onSuccess?: () => void) {
     const invalid: string[] = [];
 
     for (const file of selected) {
-      const isValidType = /\.(txt|md|pdf)$/i.test(file.name);
+      const isValidType = /\.(txt|md|pdf|docx)$/i.test(file.name);
       if (!isValidType) {
-        invalid.push(`${file.name}: formato no permitido (usa TXT, MD o PDF).`);
+        invalid.push(`${file.name}: formato no permitido (usa TXT, MD, PDF o DOCX).`);
         continue;
       }
 
@@ -186,6 +251,7 @@ export function useLoreIngest(onSuccess?: () => void) {
     setUploadedFiles,
     fileValidationErrors,
     fileProgress,
+    urlProgress,
     handleFileSelect,
     tagsText,
     setTagsText,

@@ -32,6 +32,7 @@ function App() {
           canSend={chat.canSend}
           error={chat.error}
           messages={chat.messages}
+          onClearHistory={chat.clearHistory}
         />
       );
     }
@@ -43,6 +44,7 @@ function App() {
         uploadedFiles={ingest.uploadedFiles}
         fileValidationErrors={ingest.fileValidationErrors}
         fileProgress={ingest.fileProgress}
+        urlProgress={ingest.urlProgress}
         onHandleFileSelect={ingest.handleFileSelect}
         urlsText={ingest.urlsText}
         tagsText={ingest.tagsText}
@@ -95,7 +97,7 @@ function App() {
       </main>
 
       <footer className="border-t border-slate-200/10 pt-6 text-sm text-slate-500">
-        <p>Base documental activa: consulta RAG e ingesta por URLs o archivos (TXT, MD, PDF).</p>
+        <p>Base documental activa: consulta RAG e ingesta por URLs o archivos (TXT, MD, PDF, DOCX).</p>
       </footer>
     </div>
   );

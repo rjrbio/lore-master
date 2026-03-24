@@ -1,13 +1,14 @@
 import { useId } from 'react';
 import type { IngestBatchResponse } from '../../types/lore';
-import type { FileUploadProgress } from '../../hooks/useLoreIngest';
+import type { IngestItemProgress } from '../../hooks/useLoreIngest';
 
 interface IngestPanelProps {
   mode: 'urls' | 'files';
   onModeChange: (mode: 'urls' | 'files') => void;
   uploadedFiles: File[];
   fileValidationErrors: string[];
-  fileProgress: FileUploadProgress[];
+  fileProgress: IngestItemProgress[];
+  urlProgress: IngestItemProgress[];
   onHandleFileSelect: (files: FileList | null) => void;
   urlsText: string;
   tagsText: string;
@@ -29,6 +30,7 @@ export function IngestPanel({
   uploadedFiles,
   fileValidationErrors,
   fileProgress,
+  urlProgress,
   onHandleFileSelect,
   urlsText,
   tagsText,
@@ -55,7 +57,7 @@ export function IngestPanel({
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet/85">Ingesta</p>
           <h2 className="font-display text-2xl font-semibold tracking-[-0.03em] text-white md:text-3xl">Cargar fuentes</h2>
         </div>
-        <p className="max-w-3xl text-sm leading-7 text-slate-300/78 md:text-[15px]">{mode === 'urls' ? 'Introduce URLs que el sistema indexará automáticamente.' : 'Carga archivos TXT, MD o PDF que índexará la base de conocimiento.'}</p>
+          <p className="max-w-3xl text-sm leading-7 text-slate-300/78 md:text-[15px]">{mode === 'urls' ? 'Introduce URLs que el sistema indexará automáticamente.' : 'Carga archivos TXT, MD, PDF o DOCX que indexará la base de conocimiento.'}</p>
       </header>
 
       <div className="inline-flex gap-6 border-b border-slate-200/10">
@@ -81,7 +83,7 @@ export function IngestPanel({
           <div className="grid gap-3 text-sm text-slate-100">
             <div className="grid gap-1">
               <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Archivos</span>
-              <p className="text-sm leading-7 text-slate-300/82">Arrastra o selecciona archivos TXT, MD o PDF de hasta 15 MB.</p>
+              <p className="text-sm leading-7 text-slate-300/82">Arrastra o selecciona archivos TXT, MD, PDF o DOCX de hasta 15 MB.</p>
             </div>
 
             <input
@@ -89,7 +91,7 @@ export function IngestPanel({
               className="sr-only"
               type="file"
               multiple
-              accept=".txt,.md,.pdf"
+              accept=".txt,.md,.pdf,.docx"
               onChange={(event) => onHandleFileSelect(event.target.files)}
               aria-label="Archivos a ingerir"
             />
@@ -151,7 +153,7 @@ export function IngestPanel({
           <span className="leading-7 text-slate-300/88">Reemplazar contenido existente para esta URL</span>
         </label>
 
-        <button className="neon-button w-fit py-2.5" onClick={onIngest} disabled={!canIngest}>
+        <button className="neon-button w-fit py-2.5" onClick={onIngest} disabled={!canIngest} aria-busy={isLoading}>
           {isLoading
             ? mode === 'files'
               ? 'Procesando archivos...'
@@ -162,8 +164,54 @@ export function IngestPanel({
         </button>
       </div>
 
+      {mode === 'urls' && urlProgress.length > 0 && (
+        <div className="mt-6 max-w-5xl border-t border-slate-200/10 pt-3" aria-live="polite" aria-busy={isLoading}>
+          <div className="mb-3 flex items-center gap-3">
+            <p className="text-sm uppercase tracking-[0.12em] text-slate-400">Progreso por URL</p>
+            {isLoading && (
+              <span className="flex gap-1.5" aria-label="Procesando">
+                <span className="h-1.5 w-1.5 rounded-full bg-cobalt animate-pulseY" />
+                <span className="h-1.5 w-1.5 rounded-full bg-violet animate-pulseY [animation-delay:0.2s]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-cobalt animate-pulseY [animation-delay:0.4s]" />
+              </span>
+            )}
+          </div>
+          <ul className="grid gap-0">
+            {urlProgress.map((item) => (
+              <li
+                key={item.id}
+                className={`grid gap-1 border-b border-slate-200/10 px-0 py-3 text-sm ${
+                  item.status === 'done'
+                    ? 'text-emerald-100'
+                    : item.status === 'error'
+                      ? 'text-rose-100'
+                      : item.status === 'uploading'
+                        ? 'text-slate-100'
+                        : 'text-slate-400'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="truncate">{item.name}</span>
+                  <span className="shrink-0 text-[11px] uppercase tracking-[0.16em]">
+                    {item.status === 'uploading' ? 'Procesando' : item.status === 'done' ? 'Completado' : item.status === 'error' ? 'Error' : 'Pendiente'}
+                  </span>
+                </div>
+                {item.status === 'uploading' && (
+                  <div className="h-1 w-full overflow-hidden rounded-full bg-slate-700/50">
+                    <div className="h-full animate-indeterminate rounded-full bg-gradient-to-r from-cobalt via-violet to-cobalt" />
+                  </div>
+                )}
+                {item.detail && item.status !== 'uploading' && (
+                  <p className="text-xs text-slate-400">{item.detail}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {mode === 'files' && fileProgress.length > 0 && (
-        <div className="mt-6 max-w-5xl border-t border-slate-200/10 pt-3" aria-live="polite">
+        <div className="mt-6 max-w-5xl border-t border-slate-200/10 pt-3" aria-live="polite" aria-busy={isLoading}>
           <p className="mb-3 text-sm uppercase tracking-[0.12em] text-slate-400">Progreso por archivo</p>
           <ul className="grid gap-2">
             {fileProgress.map((item) => (
@@ -194,7 +242,7 @@ export function IngestPanel({
             <button className="subtle-action justify-start" onClick={onClear} aria-label="Limpiar estado">Cerrar</button>
           </div>
 
-          {error && <p className="text-sm leading-6">{error}</p>}
+          {error && <p role="alert" className="text-sm leading-6">{error}</p>}
 
           {result && (
             <>

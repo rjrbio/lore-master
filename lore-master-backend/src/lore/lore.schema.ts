@@ -39,3 +39,7 @@ export class Lore extends Document {
 
 export const LoreSchema = SchemaFactory.createForClass(Lore);
 LoreSchema.index({ sourceUrl: 1, chunkHash: 1 });
+LoreSchema.index({ sourceUrl: 1 });
+LoreSchema.index({ sourceType: 1 });
+LoreSchema.index({ tags: 1 });
+LoreSchema.index({ updatedAt: -1 });

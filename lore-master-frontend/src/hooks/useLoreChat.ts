@@ -1,6 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getApiError, queryDocuments } from '../services/loreApi';
 import type { ChatMessage, QuerySource } from '../types/lore';
+
+const STORAGE_KEY = 'loremaster:chat:history';
+const MAX_STORED_MESSAGES = 200;
 
 function buildMessage(role: ChatMessage['role'], content: string, sources?: QuerySource[]): ChatMessage {
   return {
@@ -12,13 +15,39 @@ function buildMessage(role: ChatMessage['role'], content: string, sources?: Quer
   };
 }
 
+function loadMessages(): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as ChatMessage[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMessages(msgs: ChatMessage[]): void {
+  try {
+    const trimmed = msgs.length > MAX_STORED_MESSAGES ? msgs.slice(-MAX_STORED_MESSAGES) : msgs;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+  } catch {
+    // storage lleno o no disponible, se ignora
+  }
+}
+
 export function useLoreChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
   const [question, setQuestion] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const canSend = useMemo(() => question.trim().length > 0 && !isLoading, [question, isLoading]);
+
+  useEffect(() => {
+    saveMessages(messages);
+  }, [messages]);
+
+  function clearHistory() {
+    setMessages([]);
+  }
 
   async function sendQuestion() {
     const trimmed = question.trim();
@@ -29,10 +58,14 @@ export function useLoreChat() {
     setError(null);
     setIsLoading(true);
     setQuestion('');
+
+    // Snapshot del historial antes de añadir el nuevo mensaje
+    const historyToSend = messages.map((m) => ({ role: m.role, content: m.content }));
+
     setMessages((prev) => [...prev, buildMessage('user', trimmed)]);
 
     try {
-      const response = await queryDocuments(trimmed);
+      const response = await queryDocuments(trimmed, historyToSend);
       const answer = response.answer?.trim() || 'No encontré una respuesta fiable en el contexto disponible.';
       setMessages((prev) => [...prev, buildMessage('assistant', answer, response.sources)]);
     } catch (err) {
@@ -52,5 +85,6 @@ export function useLoreChat() {
     error,
     canSend,
     sendQuestion,
+    clearHistory,
   };
 }

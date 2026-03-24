@@ -27,9 +27,15 @@ export default {
           '0%, 100%': { transform: 'translateY(0)', opacity: '0.45' },
           '50%': { transform: 'translateY(-6px)', opacity: '1' },
         },
+        indeterminate: {
+          '0%': { transform: 'translateX(-100%)', width: '40%' },
+          '50%': { transform: 'translateX(60%)', width: '60%' },
+          '100%': { transform: 'translateX(200%)', width: '40%' },
+        },
       },
       animation: {
         pulseY: 'pulseY 1.2s infinite ease-in-out',
+        indeterminate: 'indeterminate 1.8s infinite ease-in-out',
       },
     },
   },
