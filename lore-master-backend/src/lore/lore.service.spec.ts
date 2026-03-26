@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
-import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { LoreService } from './lore.service';
 import { Lore } from './lore.schema';
 
@@ -18,7 +21,9 @@ const mockOpenAI = {
   chat: {
     completions: {
       create: jest.fn().mockResolvedValue({
-        choices: [{ message: { content: 'Respuesta generada por el modelo.' } }],
+        choices: [
+          { message: { content: 'Respuesta generada por el modelo.' } },
+        ],
       }),
     },
   },
@@ -38,7 +43,9 @@ jest.mock('axios', () => ({
   AxiosError: class AxiosError extends Error {},
 }));
 
-const mockSave = jest.fn().mockImplementation(function (this: unknown) { return Promise.resolve(this); });
+const mockSave = jest.fn().mockImplementation(function (this: unknown) {
+  return Promise.resolve(this);
+});
 const mockModel: Record<string, jest.Mock> = {
   find: jest.fn().mockReturnThis(),
   select: jest.fn().mockReturnThis(),
@@ -51,7 +58,10 @@ const mockModel: Record<string, jest.Mock> = {
   deleteMany: jest.fn().mockResolvedValue({ deletedCount: 0 }),
 };
 
-function ModelConstructor(this: Record<string, unknown>, data: Record<string, unknown>) {
+function ModelConstructor(
+  this: Record<string, unknown>,
+  data: Record<string, unknown>,
+) {
   Object.assign(this, data);
   this.save = mockSave;
 }
@@ -105,11 +115,14 @@ describe('LoreService', () => {
         key === 'OPENAI_API_KEY' ? undefined : configValues[key],
       );
 
-      await expect(createService()).rejects.toThrow(InternalServerErrorException);
+      await expect(createService()).rejects.toThrow(
+        InternalServerErrorException,
+      );
 
       // Restaurar
-      mockConfigService.get.mockImplementation(<T>(key: string, defaultValue?: T): T =>
-        (configValues[key] ?? defaultValue) as T,
+      mockConfigService.get.mockImplementation(
+        <T>(key: string, defaultValue?: T): T =>
+          (configValues[key] ?? defaultValue) as T,
       );
     });
   });
@@ -140,7 +153,9 @@ describe('LoreService', () => {
 
     it('should default category to Document', async () => {
       const result = await service.createLore('Title', 'Content');
-      expect((result as unknown as Record<string, unknown>).category).toBe('Document');
+      expect((result as unknown as Record<string, unknown>).category).toBe(
+        'Document',
+      );
     });
   });
 
@@ -221,9 +236,7 @@ describe('LoreService', () => {
       mockModel.aggregate.mockResolvedValueOnce([]);
       await service.listDocuments(0, 1000);
       expect(mockModel.aggregate).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({ $limit: 500 }),
-        ]),
+        expect.arrayContaining([expect.objectContaining({ $limit: 500 })]),
       );
     });
   });
@@ -242,7 +255,13 @@ describe('LoreService', () => {
 
     it('should call chat.completions.create with context from search results', async () => {
       mockModel.aggregate.mockResolvedValueOnce([
-        { title: 'Doc 1', content: 'Content here', sourceUrl: 'https://example.com', sourceType: 'web', score: 0.9 },
+        {
+          title: 'Doc 1',
+          content: 'Content here',
+          sourceUrl: 'https://example.com',
+          sourceType: 'web',
+          score: 0.9,
+        },
       ]);
 
       const result = await service.askQuestion('Tell me about this');
@@ -271,7 +290,13 @@ describe('LoreService', () => {
           choices: [{ message: { content: 'Respuesta final.' } }],
         });
       mockModel.aggregate.mockResolvedValueOnce([
-        { title: 'Doc', content: 'Ctx', sourceUrl: 'u', sourceType: 'web', score: 0.85 },
+        {
+          title: 'Doc',
+          content: 'Ctx',
+          sourceUrl: 'u',
+          sourceType: 'web',
+          score: 0.85,
+        },
       ]);
 
       const result = await service.askQuestion('And what else?', [
@@ -293,7 +318,9 @@ describe('LoreService', () => {
     });
 
     it('should throw BadRequest for whitespace-only URLs', async () => {
-      await expect(service.ingestUrls(['  ', '\n'])).rejects.toThrow(BadRequestException);
+      await expect(service.ingestUrls(['  ', '\n'])).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -301,7 +328,9 @@ describe('LoreService', () => {
 
   describe('ingestFiles', () => {
     it('should throw BadRequest for empty file array', async () => {
-      await expect(service.ingestFiles([])).rejects.toThrow(BadRequestException);
+      await expect(service.ingestFiles([])).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should throw BadRequest for unsupported file extension', async () => {
