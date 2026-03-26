@@ -41,6 +41,24 @@ export interface QuerySource {
     sourceType?: string;
 }
 
+export interface VectorSearchResult {
+    title: string;
+    content: string;
+    sourceUrl?: string;
+    sourceType?: string;
+    score: number;
+}
+
+interface AggregatedDocument {
+    title: string;
+    sourceUrl?: string;
+    sourceType?: string;
+    locale?: string;
+    tags: string[];
+    chunkCount: number;
+    lastUpdated?: Date;
+}
+
 export interface DocumentListItem {
     title: string;
     sourceUrl?: string;
@@ -147,7 +165,7 @@ export class LoreService {
         return newLore.save();
     }
 
-    async searchLore(question: string, topK = 5) {
+    async searchLore(question: string, topK = 5): Promise<VectorSearchResult[]> {
         this.logger.debug(`Vector search: "${question.slice(0, 80)}" (topK=${topK})`);
         const response = await this.openai.embeddings.create({
             model: this.embeddingModel,
@@ -155,7 +173,7 @@ export class LoreService {
         });
         const questionEmbedding = response.data[0].embedding;
 
-        return this.loreModel.aggregate([
+        return this.loreModel.aggregate<VectorSearchResult>([
             {
                 $vectorSearch: {
                     index: 'vector_index',
@@ -182,7 +200,7 @@ export class LoreService {
     }
 
     async findAll(skip = 0, limit = 100) {
-        return this.loreModel
+        return await this.loreModel
             .find()
             .select('-embedding')
             .sort({ updatedAt: -1 })
@@ -192,7 +210,7 @@ export class LoreService {
     }
 
     async listDocuments(skip = 0, limit = 50): Promise<DocumentListItem[]> {
-        const documents = await this.loreModel.aggregate([
+        const documents = await this.loreModel.aggregate<AggregatedDocument>([
             {
                 $project: {
                     title: 1,
@@ -328,8 +346,8 @@ Reglas:
                 title: file.title,
                 sourceUrl: file.sourceUrl,
                 sourceType: file.sourceType,
-                score: file.score as number,
-                preview: (file.content as string)?.slice(0, 200),
+                score: file.score,
+                preview: file.content?.slice(0, 200),
             })),
         };
     }

@@ -27,8 +27,8 @@ describe('AppController', () => {
   });
 
   describe('health', () => {
-    it('should return ok status when db is connected', async () => {
-      const result = await appController.getHealth();
+    it('should return ok status when db is connected', () => {
+      const result = appController.getHealth();
       expect(result.status).toBe('ok');
       expect(result.services.database).toBe('connected');
     });

@@ -16,7 +16,7 @@ export class AppController {
   }
 
   @Get('health')
-  async getHealth() {
+  getHealth() {
     const dbState = this.connection.readyState;
     const dbStatus = dbState === 1 ? 'connected' : dbState === 2 ? 'connecting' : 'disconnected';
     return {
