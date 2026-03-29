@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { queryDocumentsStream } from '../services/loreApi';
+import { getApiError, queryDocuments, queryDocumentsStream } from '../services/loreApi';
 import type { AskStreamEvent, ChatMessage, QuerySource } from '../types/lore';
 
 const STORAGE_KEY = 'loremaster:chat:history';
@@ -114,15 +114,24 @@ export function useLoreChat() {
       }
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
-        const fallback = err instanceof Error ? err.message : 'No pude consultar la base documental';
-        setError(fallback);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId && !m.content
-              ? { ...m, content: 'No pude recuperar contenido de la base documental. Intenta de nuevo en unos segundos.' }
-              : m,
-          ),
-        );
+        // Fallback: si el stream falla, intentar con el endpoint clásico
+        try {
+          const response = await queryDocuments(trimmed, historyToSend);
+          const answer = response.answer?.trim() || 'No encontré una respuesta fiable en el contexto disponible.';
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantId ? { ...m, content: answer, sources: response.sources } : m)),
+          );
+        } catch (fallbackErr) {
+          const message = getApiError(fallbackErr, 'No pude consultar la base documental');
+          setError(message);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId && !m.content
+                ? { ...m, content: 'No pude recuperar contenido de la base documental. Intenta de nuevo en unos segundos.' }
+                : m,
+            ),
+          );
+        }
       }
     } finally {
       abortRef.current = null;
