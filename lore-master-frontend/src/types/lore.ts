@@ -26,6 +26,12 @@ export interface AskResponse {
   sources?: QuerySource[];
 }
 
+export type AskStreamEvent =
+  | { type: 'delta'; content: string }
+  | { type: 'sources'; sources: QuerySource[] }
+  | { type: 'done' }
+  | { type: 'error'; message: string };
+
 export interface IngestFailure {
   index: number;
   reason: string;

@@ -5,6 +5,7 @@ import {
     Logger,
     ServiceUnavailableException,
 } from '@nestjs/common';
+import { Observable, Subscriber } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -350,6 +351,109 @@ Reglas:
                 preview: file.content?.slice(0, 200),
             })),
         };
+    }
+
+    askQuestionStream(
+        question: string,
+        history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    ): Observable<MessageEvent> {
+        return new Observable((subscriber: Subscriber<MessageEvent>) => {
+            this.handleStream(subscriber, question, history);
+        });
+    }
+
+    private async handleStream(
+        subscriber: Subscriber<MessageEvent>,
+        question: string,
+        history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    ): Promise<void> {
+        try {
+            const searchQuery =
+                history && history.length > 0
+                    ? await this.condenseQuestion(question, history)
+                    : question;
+
+            const contextFiles = await this.searchLore(searchQuery);
+            if (contextFiles.length === 0) {
+                subscriber.next({
+                    data: JSON.stringify({
+                        type: 'delta',
+                        content: 'No encontré contenido relevante en la base documental para responder esa consulta. Por favor, ingesta documentos relacionados con el tema antes de realizar la consulta.',
+                    }),
+                } as MessageEvent);
+                subscriber.next({
+                    data: JSON.stringify({ type: 'sources', sources: [] }),
+                } as MessageEvent);
+                subscriber.next({ data: JSON.stringify({ type: 'done' }) } as MessageEvent);
+                subscriber.complete();
+                return;
+            }
+
+            // Enviar fuentes al inicio para que el cliente las tenga pronto
+            const sources = contextFiles.map((file) => ({
+                title: file.title,
+                sourceUrl: file.sourceUrl,
+                sourceType: file.sourceType,
+                score: file.score,
+                preview: file.content?.slice(0, 200),
+            }));
+            subscriber.next({
+                data: JSON.stringify({ type: 'sources', sources }),
+            } as MessageEvent);
+
+            const contextText = contextFiles
+                .map((file, index) => {
+                    const sourceLabel = file.sourceUrl ? `Fuente: ${file.sourceUrl}` : 'Fuente no disponible';
+                    return `[Documento ${index + 1}]\nTítulo: ${file.title}\n${sourceLabel}\nContenido:\n${file.content}`;
+                })
+                .join('\n\n---\n\n');
+
+            const systemPrompt = `Eres un consultor-analista documental experto. Tu función es analizar el contenido recuperado y proporcionar respuestas precisas y bien estructuradas.
+
+Reglas:
+1. Basa tu respuesta EXCLUSIVAMENTE en los fragmentos de contexto proporcionados.
+2. Al citar información específica, indica de qué documento proviene usando [Documento N].
+3. Estructura tu respuesta con claridad: usa secciones o puntos cuando sea apropiado.
+4. Si el contexto no contiene información suficiente para responder, indícalo explícitamente: "El contexto disponible no contiene información sobre [tema específico]."
+5. No inventes ni extrapoles información más allá del contexto proporcionado.
+6. Usa un tono profesional y analítico.`;
+
+            const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+                { role: 'system', content: systemPrompt },
+                ...(history ?? []).map(
+                    (h) => ({ role: h.role, content: h.content } as OpenAI.Chat.ChatCompletionMessageParam),
+                ),
+                {
+                    role: 'user',
+                    content: `Pregunta: ${question}\n\nContexto documental recuperado:\n${contextText}`,
+                },
+            ];
+
+            const stream = await this.openai.chat.completions.create({
+                model: this.chatModel,
+                messages,
+                stream: true,
+            });
+
+            for await (const chunk of stream) {
+                const delta = chunk.choices[0]?.delta?.content;
+                if (delta) {
+                    subscriber.next({
+                        data: JSON.stringify({ type: 'delta', content: delta }),
+                    } as MessageEvent);
+                }
+            }
+
+            this.logger.debug(`Stream completado (${contextFiles.length} fuentes, modelo: ${this.chatModel})`);
+            subscriber.next({ data: JSON.stringify({ type: 'done' }) } as MessageEvent);
+            subscriber.complete();
+        } catch (error) {
+            this.logger.error('Error en stream', error instanceof Error ? error.stack : undefined);
+            subscriber.next({
+                data: JSON.stringify({ type: 'error', message: 'Error al generar la respuesta.' }),
+            } as MessageEvent);
+            subscriber.complete();
+        }
     }
 
     async ingestUrls(urls: string[], options?: IngestOptions): Promise<IngestBatchResult> {

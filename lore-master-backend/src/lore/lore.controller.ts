@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Header, Post, Query, UseInterceptors, UploadedFiles, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Get, Header, Post, Query, Sse, UseInterceptors, UploadedFiles, BadRequestException } from '@nestjs/common';
+import { Observable } from 'rxjs';
 import { FilesInterceptor, } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Throttle } from '@nestjs/throttler';
@@ -55,6 +56,14 @@ export class LoreController {
     @Post('documents/query')
     async ask(@Body() dto: AskDto) {
         return await this.loreService.askQuestion(dto.question, dto.history);
+    }
+
+    @Post('documents/query/stream')
+    @Sse()
+    @Header('Cache-Control', 'no-cache')
+    @Header('Connection', 'keep-alive')
+    askStream(@Body() dto: AskDto): Observable<MessageEvent> {
+        return this.loreService.askQuestionStream(dto.question, dto.history);
     }
 
     @Post('documents/ingest')

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AskRequest, AskResponse, IngestBatchResponse } from '../types/lore';
+import type { AskRequest, AskResponse, AskStreamEvent, IngestBatchResponse } from '../types/lore';
 
 const baseURL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000' : '');
 
@@ -33,6 +33,53 @@ export async function queryDocuments(
   const body: AskRequest = { question, history: history ?? [] };
   const { data } = await api.post<AskResponse>('/documents/query', body);
   return data;
+}
+
+export async function queryDocumentsStream(
+  question: string,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>,
+  onEvent: (event: AskStreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const body: AskRequest = { question, history };
+  const url = `${baseURL}/documents/query/stream`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('ReadableStream not supported');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const payload = line.slice(6).trim();
+      if (!payload) continue;
+      try {
+        onEvent(JSON.parse(payload) as AskStreamEvent);
+      } catch {
+        // ignore malformed events
+      }
+    }
+  }
 }
 
 export async function ingestDocuments(urls: string[], replaceExisting: boolean, tags: string[]): Promise<IngestBatchResponse> {

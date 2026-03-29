@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { getApiError, queryDocuments } from '../services/loreApi';
-import type { ChatMessage, QuerySource } from '../types/lore';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { queryDocumentsStream } from '../services/loreApi';
+import type { AskStreamEvent, ChatMessage, QuerySource } from '../types/lore';
 
 const STORAGE_KEY = 'loremaster:chat:history';
 const MAX_STORED_MESSAGES = 200;
@@ -49,33 +49,86 @@ export function useLoreChat() {
     setMessages([]);
   }
 
-  async function sendQuestion() {
+  const abortRef = useRef<AbortController | null>(null);
+
+  const sendQuestion = useCallback(async () => {
     const trimmed = question.trim();
-    if (!trimmed || isLoading) {
-      return;
-    }
+    if (!trimmed || isLoading) return;
 
     setError(null);
     setIsLoading(true);
     setQuestion('');
 
-    // Snapshot del historial antes de añadir el nuevo mensaje
     const historyToSend = messages.map((m) => ({ role: m.role, content: m.content }));
-
     setMessages((prev) => [...prev, buildMessage('user', trimmed)]);
 
+    const assistantId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const assistantMsg: ChatMessage = {
+      id: assistantId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toLocaleTimeString(),
+    };
+    setMessages((prev) => [...prev, assistantMsg]);
+
+    let accumulatedContent = '';
+    let sources: QuerySource[] | undefined;
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
-      const response = await queryDocuments(trimmed, historyToSend);
-      const answer = response.answer?.trim() || 'No encontré una respuesta fiable en el contexto disponible.';
-      setMessages((prev) => [...prev, buildMessage('assistant', answer, response.sources)]);
+      await queryDocumentsStream(
+        trimmed,
+        historyToSend,
+        (event: AskStreamEvent) => {
+          switch (event.type) {
+            case 'delta':
+              accumulatedContent += event.content;
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantId ? { ...m, content: accumulatedContent } : m)),
+              );
+              break;
+            case 'sources':
+              sources = event.sources;
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantId ? { ...m, sources } : m)),
+              );
+              break;
+            case 'error':
+              setError(event.message);
+              break;
+          }
+        },
+        controller.signal,
+      );
+
+      if (!accumulatedContent.trim()) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, content: 'No encontré una respuesta fiable en el contexto disponible.' }
+              : m,
+          ),
+        );
+      }
     } catch (err) {
-      const message = getApiError(err, 'No pude consultar la base documental');
-      setError(message);
-      setMessages((prev) => [...prev, buildMessage('assistant', 'No pude recuperar contenido de la base documental. Intenta de nuevo en unos segundos.')]);
+      if ((err as Error).name !== 'AbortError') {
+        const fallback = err instanceof Error ? err.message : 'No pude consultar la base documental';
+        setError(fallback);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId && !m.content
+              ? { ...m, content: 'No pude recuperar contenido de la base documental. Intenta de nuevo en unos segundos.' }
+              : m,
+          ),
+        );
+      }
     } finally {
+      abortRef.current = null;
       setIsLoading(false);
     }
-  }
+  }, [question, isLoading, messages]);
 
   return {
     messages,

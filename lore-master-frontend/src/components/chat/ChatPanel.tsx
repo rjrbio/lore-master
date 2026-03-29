@@ -1,4 +1,4 @@
-import { type KeyboardEvent } from 'react';
+import { type KeyboardEvent, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
@@ -26,6 +26,12 @@ export function ChatPanel({
   onClearHistory,
 }: ChatPanelProps) {
   const hasMessages = messages.length > 0;
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages, isLoading]);
 
   const onEnterPress = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
@@ -55,7 +61,7 @@ export function ChatPanel({
         </div>
       </div>
 
-      <div className="grid max-h-[44vh] min-h-[240px] gap-4 overflow-y-auto pr-2" role="log" aria-live="polite">
+      <div ref={scrollRef} className="grid max-h-[44vh] min-h-[240px] gap-4 overflow-y-auto pr-2" role="log" aria-live="polite">
         {!hasMessages && (
           <div className="grid min-h-[240px] place-content-center gap-2 border-l border-slate-200/10 pl-6 text-left">
             <p className="font-display text-xl text-slate-100">No hay consultas todavía</p>
