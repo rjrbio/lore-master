@@ -25,7 +25,11 @@ import { LoreModule } from './lore/lore.module';
         VECTOR_SEARCH_THRESHOLD: Joi.number().min(0).max(1).default(0.72),
       }),
     }),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 30 }]),
+    ThrottlerModule.forRoot([
+      { name: 'short', ttl: 10000, limit: 10 },   // anti-burst: 10 req / 10s
+      { name: 'medium', ttl: 60000, limit: 30 },   // uso normal: 30 req / min
+      { name: 'long', ttl: 86400000, limit: 200 }, // diario: 200 req / día
+    ]),
     MongooseModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({

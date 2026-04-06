@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Post, Query, Res, UseInterceptors, UploadedFiles, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Get, Header, Post, Query, Res, UseInterceptors, UploadedFiles, BadRequestException, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { FilesInterceptor, } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -7,21 +7,27 @@ import { LoreService } from './lore.service';
 import { AskDto } from './dto/ask.dto.js';
 import { IngestUrlsDto } from './dto/ingest-urls.dto.js';
 import { CreateLoreDto } from './dto/create-lore.dto.js';
+import { DailyQuota, DailyQuotaGuard } from '../common/guards/daily-quota.guard';
 
 @Controller()
 export class LoreController {
     constructor(private readonly loreService: LoreService) { }
 
     @Post('documents/manual')
+    @Throttle({ short: { ttl: 10000, limit: 5 }, medium: { ttl: 60000, limit: 10 }, long: { ttl: 86400000, limit: 50 } })
     async addLore(@Body() dto: CreateLoreDto) {
         return await this.loreService.createLore(dto.title, dto.content, dto.category);
     }
 
     @Get('documents/search')
+    @Throttle({ short: { ttl: 10000, limit: 5 }, medium: { ttl: 60000, limit: 15 }, long: { ttl: 86400000, limit: 150 } })
     @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
     @Header('Pragma', 'no-cache')
     @Header('Expires', '0')
     async search(@Query('q') question: string) {
+        if (!question || question.length > 2000) {
+            throw new BadRequestException('El parámetro "q" es obligatorio y no puede superar 2000 caracteres.');
+        }
         return await this.loreService.searchLore(question);
     }
 
@@ -54,11 +60,17 @@ export class LoreController {
     }
 
     @Post('documents/query')
+    @Throttle({ short: { ttl: 10000, limit: 3 }, medium: { ttl: 60000, limit: 10 }, long: { ttl: 86400000, limit: 100 } })
+    @UseGuards(DailyQuotaGuard)
+    @DailyQuota(100, 'query')
     async ask(@Body() dto: AskDto) {
         return await this.loreService.askQuestion(dto.question, dto.history);
     }
 
     @Post('documents/query/stream')
+    @Throttle({ short: { ttl: 10000, limit: 3 }, medium: { ttl: 60000, limit: 10 }, long: { ttl: 86400000, limit: 100 } })
+    @UseGuards(DailyQuotaGuard)
+    @DailyQuota(100, 'query')
     askStream(@Body() dto: AskDto, @Res() res: Response) {
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
@@ -81,7 +93,9 @@ export class LoreController {
     }
 
     @Post('documents/ingest')
-    @Throttle({ default: { ttl: 60000, limit: 5 } })
+    @Throttle({ short: { ttl: 10000, limit: 2 }, medium: { ttl: 60000, limit: 3 }, long: { ttl: 86400000, limit: 10 } })
+    @UseGuards(DailyQuotaGuard)
+    @DailyQuota(20, 'ingest')
     async ingest(@Body() dto: IngestUrlsDto) {
         const resolvedUrls = dto.urls?.length ? dto.urls : dto.url ? [dto.url] : [];
         return await this.loreService.ingestUrls(resolvedUrls, {
@@ -91,7 +105,9 @@ export class LoreController {
     }
 
     @Post('documents/ingest-files')
-    @Throttle({ default: { ttl: 60000, limit: 5 } })
+    @Throttle({ short: { ttl: 10000, limit: 2 }, medium: { ttl: 60000, limit: 3 }, long: { ttl: 86400000, limit: 10 } })
+    @UseGuards(DailyQuotaGuard)
+    @DailyQuota(20, 'ingest')
     @UseInterceptors(FilesInterceptor('files', 10, {
         storage: memoryStorage(),
         limits: { fileSize: 10 * 1024 * 1024 },

@@ -3,10 +3,14 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import helmet from 'helmet';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { ThrottleExceptionFilter } from './common/filters/throttle-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const logger = new Logger('Bootstrap');
+
+  // Confiar en el proxy (nginx) para obtener la IP real del cliente
+  app.set('trust proxy', 1);
 
   app.use(helmet());
 
@@ -30,6 +34,8 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
   );
+
+  app.useGlobalFilters(new ThrottleExceptionFilter());
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);

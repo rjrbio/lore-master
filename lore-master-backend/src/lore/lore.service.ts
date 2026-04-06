@@ -16,6 +16,7 @@ import OpenAI from 'openai';
 import { PDFParse } from 'pdf-parse';
 import { createHash } from 'crypto';
 import { Lore } from './lore.schema';
+import { validateUrlSafety } from './validators/url-safety.validator';
 
 type SourceType = 'web' | 'fandom' | 'wikipedia' | 'file';
 type ExtractionMode = 'jina' | 'api' | 'html';
@@ -140,7 +141,7 @@ export class LoreService {
         if (!apiKey) {
             throw new InternalServerErrorException('OPENAI_API_KEY no está configurada');
         }
-        this.openai = new OpenAI({ apiKey });
+        this.openai = new OpenAI({ apiKey, timeout: 30000 });
         this.minChunkLength = this.configService.get<number>('MIN_CHUNK_LENGTH', 120);
         this.maxChunkLength = this.configService.get<number>('MAX_CHUNK_LENGTH', 1900);
         this.vectorSearchThreshold = this.configService.get<number>('VECTOR_SEARCH_THRESHOLD', 0.72);
@@ -281,7 +282,7 @@ export class LoreService {
                     content: question,
                 },
             ],
-        });
+        }, { timeout: 15000 });
 
         return condensed.choices[0].message.content?.trim() || question;
     }
@@ -337,7 +338,7 @@ Reglas:
         const response = await this.openai.chat.completions.create({
             model: this.chatModel,
             messages,
-        });
+        }, { timeout: 60000 });
 
         this.logger.debug(`Respuesta generada (${contextFiles.length} fuentes, modelo: ${this.chatModel})`);
 
@@ -433,7 +434,7 @@ Reglas:
                 model: this.chatModel,
                 messages,
                 stream: true,
-            });
+            }, { timeout: 60000 });
 
             for await (const chunk of stream) {
                 const delta = chunk.choices[0]?.delta?.content;
@@ -495,6 +496,7 @@ Reglas:
 
     async ingestFromUrl(url: string, options?: IngestOptions): Promise<IngestSourceResult> {
         try {
+            await validateUrlSafety(url);
             const normalized = this.normalizeDocumentUrl(url);
             const extraction = await this.fetchTextWithFallback(normalized);
             const cleanText = extraction.content.trim();
@@ -897,6 +899,8 @@ Reglas:
             timeout: 15000,
             responseType: 'text',
             validateStatus: () => true,
+            maxContentLength: 5 * 1024 * 1024,
+            maxBodyLength: 5 * 1024 * 1024,
             headers: {
                 'Accept-Language': acceptLanguage,
             },
@@ -931,6 +935,8 @@ Reglas:
                 timeout: 15000,
                 responseType: 'text',
                 validateStatus: () => true,
+                maxContentLength: 5 * 1024 * 1024,
+                maxBodyLength: 5 * 1024 * 1024,
                 headers: {
                     'User-Agent':
                         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -939,15 +945,17 @@ Reglas:
             });
 
             if (htmlResponse.status >= 400) {
+                this.logger.warn(`Fetch fallback HTML falló: jina=${jinaResponse.status}, html=${htmlResponse.status}, url=${urlData.canonicalUrl}`);
                 throw new ServiceUnavailableException(
-                    `No se pudo leer la página. r.jina.ai = ${jinaResponse.status}, origen = ${htmlResponse.status}`,
+                    'No se pudo leer la página. Comprueba que la URL es accesible públicamente.',
                 );
             }
 
             const parsed = this.extractTextFromPageHtml(String(htmlResponse.data ?? ''), urlData.articleTitle, urlData.locale);
             if (!parsed.trim()) {
+                this.logger.warn(`Extracción vacía tras HTML fallback: jina=${jinaResponse.status}, url=${urlData.canonicalUrl}`);
                 throw new ServiceUnavailableException(
-                    `La fuente respondió pero no se pudo extraer texto útil. r.jina.ai = ${jinaResponse.status}`,
+                    'La fuente respondió pero no se pudo extraer texto útil.',
                 );
             }
 
@@ -960,7 +968,8 @@ Reglas:
             };
         }
 
-        throw new ServiceUnavailableException(`r.jina.ai devolvió ${jinaResponse.status} para la URL solicitada.`);
+        this.logger.warn(`Todos los métodos de extracción fallaron: jina=${jinaResponse.status}, url=${urlData.canonicalUrl}`);
+        throw new ServiceUnavailableException('No se pudo extraer texto de la URL solicitada.');
     }
 
     private async fetchTextFromWikiApi(urlData: NormalizedDocumentUrl): Promise<string | null> {
@@ -973,6 +982,8 @@ Reglas:
         }>(urlData.apiUrl, {
             timeout: 15000,
             validateStatus: () => true,
+            maxContentLength: 5 * 1024 * 1024,
+            maxBodyLength: 5 * 1024 * 1024,
             headers: {
                 Accept: 'application/json',
                 'Accept-Language': this.buildAcceptLanguage(urlData.locale),
