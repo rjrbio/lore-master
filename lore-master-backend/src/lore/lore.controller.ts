@@ -60,17 +60,17 @@ export class LoreController {
     }
 
     @Post('documents/query')
-    @Throttle({ short: { ttl: 10000, limit: 3 }, medium: { ttl: 60000, limit: 10 }, long: { ttl: 86400000, limit: 100 } })
+    @Throttle({ short: { ttl: 10000, limit: 5 }, medium: { ttl: 60000, limit: 15 }, long: { ttl: 86400000, limit: 200 } })
     @UseGuards(DailyQuotaGuard)
-    @DailyQuota(100, 'query')
+    @DailyQuota(200, 'query')
     async ask(@Body() dto: AskDto) {
         return await this.loreService.askQuestion(dto.question, dto.history);
     }
 
     @Post('documents/query/stream')
-    @Throttle({ short: { ttl: 10000, limit: 3 }, medium: { ttl: 60000, limit: 10 }, long: { ttl: 86400000, limit: 100 } })
+    @Throttle({ short: { ttl: 10000, limit: 5 }, medium: { ttl: 60000, limit: 15 }, long: { ttl: 86400000, limit: 200 } })
     @UseGuards(DailyQuotaGuard)
-    @DailyQuota(100, 'query')
+    @DailyQuota(200, 'query')
     askStream(@Body() dto: AskDto, @Res() res: Response) {
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
@@ -93,9 +93,9 @@ export class LoreController {
     }
 
     @Post('documents/ingest')
-    @Throttle({ short: { ttl: 10000, limit: 2 }, medium: { ttl: 60000, limit: 3 }, long: { ttl: 86400000, limit: 10 } })
+    @Throttle({ short: { ttl: 10000, limit: 5 }, medium: { ttl: 60000, limit: 8 }, long: { ttl: 86400000, limit: 50 } })
     @UseGuards(DailyQuotaGuard)
-    @DailyQuota(20, 'ingest')
+    @DailyQuota(50, 'ingest')
     async ingest(@Body() dto: IngestUrlsDto) {
         const resolvedUrls = dto.urls?.length ? dto.urls : dto.url ? [dto.url] : [];
         return await this.loreService.ingestUrls(resolvedUrls, {
@@ -105,9 +105,9 @@ export class LoreController {
     }
 
     @Post('documents/ingest-files')
-    @Throttle({ short: { ttl: 10000, limit: 2 }, medium: { ttl: 60000, limit: 3 }, long: { ttl: 86400000, limit: 10 } })
+    @Throttle({ short: { ttl: 10000, limit: 5 }, medium: { ttl: 60000, limit: 8 }, long: { ttl: 86400000, limit: 50 } })
     @UseGuards(DailyQuotaGuard)
-    @DailyQuota(20, 'ingest')
+    @DailyQuota(50, 'ingest')
     @UseInterceptors(FilesInterceptor('files', 10, {
         storage: memoryStorage(),
         limits: { fileSize: 10 * 1024 * 1024 },

@@ -26,9 +26,9 @@ import { LoreModule } from './lore/lore.module';
       }),
     }),
     ThrottlerModule.forRoot([
-      { name: 'short', ttl: 10000, limit: 10 },   // anti-burst: 10 req / 10s
-      { name: 'medium', ttl: 60000, limit: 30 },   // uso normal: 30 req / min
-      { name: 'long', ttl: 86400000, limit: 200 }, // diario: 200 req / día
+      { name: 'short', ttl: 10000, limit: 15 },   // anti-burst: 15 req / 10s
+      { name: 'medium', ttl: 60000, limit: 40 },   // uso normal: 40 req / min
+      { name: 'long', ttl: 86400000, limit: 500 }, // diario: 500 req / día
     ]),
     MongooseModule.forRootAsync({
       inject: [ConfigService],

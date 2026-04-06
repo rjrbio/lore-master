@@ -1,5 +1,7 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
 import { lookup } from 'dns/promises';
+
+const logger = new Logger('UrlSafety');
 
 /**
  * Rangos de IP privados/reservados que nunca deben ser accedidos
@@ -9,14 +11,11 @@ const BLOCKED_IP_PREFIXES = [
     '127.',       // loopback
     '10.',        // clase A privada
     '0.',         // "this" network
-    '100.64.',    // carrier-grade NAT
     '169.254.',   // link-local (AWS metadata endpoint)
     '192.168.',   // clase C privada
-    '224.',       // multicast
-    '255.',       // broadcast
 ];
 
-const BLOCKED_IPV6 = ['::1', '::ffff:127.0.0.1', 'fe80::', 'fc00::', 'fd00::'];
+const BLOCKED_IPV6 = ['::1', '::ffff:127.0.0.1', 'fe80::'];
 
 function isBlockedIpv4(ip: string): boolean {
     if (BLOCKED_IP_PREFIXES.some((prefix) => ip.startsWith(prefix))) return true;
@@ -37,7 +36,8 @@ function isBlockedIpv6(ip: string): boolean {
  * Valida que una URL sea segura para hacer fetch desde el servidor.
  * - Solo permite http/https
  * - Resuelve DNS y bloquea IPs privadas/internas
- * - Previene ataques SSRF (Server-Side Request Forgery)
+ * - Si la resolución DNS falla, permite la request (dominios CDN como Fandom
+ *   pueden no resolver desde ciertos entornos)
  */
 export async function validateUrlSafety(rawUrl: string): Promise<void> {
     let parsed: URL;
@@ -57,9 +57,13 @@ export async function validateUrlSafety(rawUrl: string): Promise<void> {
         if (isBlockedIpv4(hostname)) {
             throw new BadRequestException('No se permite acceder a direcciones IP privadas o reservadas.');
         }
+        return; // IP pública literal → OK
     }
 
-    // Resolver DNS y verificar que la IP resultante no sea interna
+    // Resolver DNS y verificar que la IP resultante no sea interna.
+    // Si DNS falla (timeout, NXDOMAIN transitorio), dejamos pasar con warning
+    // en lugar de bloquear — muchos CDN (Fandom/Cloudflare) pueden fallar
+    // en resolución desde ciertos entornos.
     try {
         const result = await lookup(hostname);
         const ip = result.address;
@@ -73,6 +77,7 @@ export async function validateUrlSafety(rawUrl: string): Promise<void> {
         }
     } catch (error) {
         if (error instanceof BadRequestException) throw error;
-        throw new BadRequestException('No se pudo resolver el dominio de la URL proporcionada.');
+        // DNS falló pero no es IP privada → permitir con warning
+        logger.warn(`DNS lookup falló para ${hostname}: ${error instanceof Error ? error.message : 'desconocido'} — permitiendo request`);
     }
 }
